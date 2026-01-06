@@ -1,5 +1,6 @@
 package com.yymod.wardrobe.client.screen;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.menu.WardrobeMenu;
@@ -26,6 +27,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private static final int COLOR_HIGHLIGHT_GREEN = 0x8800FF00;
     private static final int COLOR_HIGHLIGHT_YELLOW = 0x88FFD200;
     private static final int COLOR_HIGHLIGHT_RED = 0x88FF0000;
+    private static final int COLOR_BORDER_BLUE = 0xFF4A76FF;
+    private static final int COLOR_BORDER_GREEN = 0xFF3FD46B;
+    private static final int COLOR_BORDER_RED = 0xFFE04848;
 
     private Button modeButton;
     private Button transferButton;
@@ -89,7 +93,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(guiGraphics);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderItemOverrides(guiGraphics);
         renderTooltip(guiGraphics, mouseX, mouseY);
+        renderOverlays(guiGraphics);
     }
 
     @Override
@@ -125,9 +131,6 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
                 };
                 if (color != 0) {
                     guiGraphics.fill(x1, y1, x1 + 16, y1 + 16, color);
-                }
-                if (highlight == WardrobeTransfer.HIGHLIGHT_UNLOAD) {
-                    guiGraphics.drawString(font, "X", x1 + 5, y1 + 3, 0xFFFFFFFF, false);
                 }
             }
         }
@@ -280,6 +283,63 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         return -1;
     }
 
+    private void renderSlotBorders(GuiGraphics guiGraphics) {
+        int left = leftPos;
+        int top = topPos;
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound() || config.getMode() == com.yymod.wardrobe.content.data.WardrobeSlotMode.NONE) {
+                continue;
+            }
+            int color = switch (config.getMode()) {
+                case BOTH -> COLOR_BORDER_BLUE;
+                case UNLOAD -> COLOR_BORDER_RED;
+                case LOAD -> COLOR_BORDER_GREEN;
+                case NONE -> 0;
+            };
+            if (color == 0) {
+                continue;
+            }
+            int x1 = left + slot.x - 1;
+            int y1 = top + slot.y - 1;
+            int x2 = x1 + 18;
+            int y2 = y1 + 18;
+            guiGraphics.fill(x1, y1, x2, y1 + 1, color);
+            guiGraphics.fill(x1, y2 - 1, x2, y2, color);
+            guiGraphics.fill(x1, y1, x1 + 1, y2, color);
+            guiGraphics.fill(x2 - 1, y1, x2, y2, color);
+        }
+    }
+
+    private void renderSetupCounts(GuiGraphics guiGraphics) {
+        int left = leftPos;
+        int top = topPos;
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            ItemStack bound = config.getBoundItem();
+            if (!bound.isStackable()) {
+                continue;
+            }
+            String maxText = Integer.toString(config.getMaxCount());
+            String minText = Integer.toString(config.getMinCount());
+            int x = left + slot.x;
+            int y = top + slot.y;
+            guiGraphics.drawString(font, maxText, x + 16 - font.width(maxText), y + 1, 0xFFFFFFFF, false);
+            guiGraphics.drawString(font, minText, x + 16 - font.width(minText), y + 9, 0xFFFFFFFF, false);
+        }
+    }
+
     private void updateWidgets() {
         modeButton.setMessage(menu.isSetupMode() ? Component.literal("Setup") : Component.literal("Operational"));
         transferButton.visible = !menu.isSetupMode();
@@ -297,6 +357,66 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             String name = menu.getBlockEntity().getActiveSetup().getName();
             lastSentName = name;
             setupNameBox.setValue(name);
+        }
+    }
+
+    private void renderOverlays(GuiGraphics guiGraphics) {
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(0, 0, 1000);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.depthFunc(519);
+        renderSlotBorders(guiGraphics);
+        if (menu.isSetupMode()) {
+            renderSetupCounts(guiGraphics);
+        } else {
+            renderOperationalMarkers(guiGraphics);
+        }
+        RenderSystem.depthFunc(515);
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+        guiGraphics.pose().popPose();
+    }
+
+    private void renderOperationalMarkers(GuiGraphics guiGraphics) {
+        int left = leftPos;
+        int top = topPos;
+        for (int slotIndex = 0; slotIndex < WardrobeSlotConfig.SLOT_COUNT; slotIndex++) {
+            if (menu.getHighlight(slotIndex) != WardrobeTransfer.HIGHLIGHT_UNLOAD) {
+                continue;
+            }
+            Slot slot = getSlotForWardrobeIndex(slotIndex);
+            if (slot == null) {
+                continue;
+            }
+            int x1 = left + slot.x;
+            int y1 = top + slot.y;
+            guiGraphics.drawString(font, "X", x1 + 5, y1 + 3, 0xFFFFFFFF, false);
+        }
+    }
+
+    private void renderItemOverrides(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            if (!slot.isActive()) {
+                continue;
+            }
+            ItemStack stack = slot.getItem();
+            if (stack.isEmpty()) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            guiGraphics.renderItem(stack, x, y);
+            String overlay = menu.isSetupMode() ? " " : "1";
+            guiGraphics.renderItemDecorations(font, stack, x, y, overlay);
+        }
+
+        Slot hovered = getSlotUnderMouse();
+        if (hovered != null && hovered.isActive()) {
+            int x = leftPos + hovered.x;
+            int y = topPos + hovered.y;
+            renderSlotHighlight(guiGraphics, x, y, 0, getSlotColor(hovered.getSlotIndex()));
         }
     }
 }

@@ -150,7 +150,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
                     break;
                 }
             }
-            int next = (delta >= 0) ? (idx + 1) % steps.length : (idx - 1 + steps.length) % steps.length;
+            int next = delta >= 0 ? Math.min(steps.length - 1, idx + 1) : Math.max(0, idx - 1);
             updated = steps[next];
         } else {
             updated = Math.max(0, Math.min(maxStack, current + delta));
