@@ -93,15 +93,21 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(guiGraphics);
-        renderBg(guiGraphics, partialTick, mouseX, mouseY);
-        hoveredSlot = getSlotAt(mouseX, mouseY);
-        renderItemOverrides(guiGraphics);
-        renderLabels(guiGraphics, mouseX, mouseY);
-        for (var renderable : renderables) {
-            renderable.render(guiGraphics, mouseX, mouseY, partialTick);
+        if (menu.isSetupMode()) {
+            renderBg(guiGraphics, partialTick, mouseX, mouseY);
+            hoveredSlot = getSlotAt(mouseX, mouseY);
+            renderItemOverrides(guiGraphics);
+            renderLabels(guiGraphics, mouseX, mouseY);
+            for (var renderable : renderables) {
+                renderable.render(guiGraphics, mouseX, mouseY, partialTick);
+            }
+            renderTooltip(guiGraphics, mouseX, mouseY);
+            renderOverlays(guiGraphics);
+        } else {
+            hoveredSlot = null;
+            super.render(guiGraphics, mouseX, mouseY, partialTick);
+            renderOverlays(guiGraphics);
         }
-        renderTooltip(guiGraphics, mouseX, mouseY);
-        renderOverlays(guiGraphics);
     }
 
     @Override
@@ -337,12 +343,22 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             if (!bound.isStackable()) {
                 continue;
             }
-            String maxText = Integer.toString(config.getMaxCount());
-            String minText = Integer.toString(config.getMinCount());
             int x = left + slot.x;
             int y = top + slot.y;
-            guiGraphics.drawString(font, maxText, x + 16 - font.width(maxText), y + 1, 0xFFFFFFFF, false);
-            guiGraphics.drawString(font, minText, x + 16 - font.width(minText), y + 9, 0xFFFFFFFF, false);
+            int maxCount = config.getMaxCount();
+            int minCount = config.getMinCount();
+            int maxStackSize = bound.getMaxStackSize();
+            boolean showMax = minCount != maxStackSize;
+            boolean showMin = maxCount != 0;
+
+            if (showMax) {
+                String maxText = Integer.toString(maxCount);
+                guiGraphics.drawString(font, maxText, x + 16 - font.width(maxText), y + 1, 0xFFFFFFFF, false);
+            }
+            if (showMin) {
+                String minText = Integer.toString(minCount);
+                guiGraphics.drawString(font, minText, x + 16 - font.width(minText), y + 9, 0xFFFFFFFF, false);
+            }
         }
     }
 
