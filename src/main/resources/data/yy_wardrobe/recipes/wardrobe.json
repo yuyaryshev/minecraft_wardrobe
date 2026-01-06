@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PCP",
+    "PCP",
+    "CCC"
+  ],
+  "key": {
+    "P": { "tag": "minecraft:planks" },
+    "C": { "item": "minecraft:chest" }
+  },
+  "result": {
+    "item": "yy_wardrobe:wardrobe"
+  }
+}

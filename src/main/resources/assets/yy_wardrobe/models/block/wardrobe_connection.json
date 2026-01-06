@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "all": "minecraft:block/stripped_spruce_log"
+  }
+}

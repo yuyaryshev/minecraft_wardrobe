@@ -1,0 +1,16 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "PCP",
+    "PCP",
+    "PCP"
+  ],
+  "key": {
+    "P": { "tag": "minecraft:planks" },
+    "C": { "item": "minecraft:stick" }
+  },
+  "result": {
+    "item": "yy_wardrobe:wardrobe_connection",
+    "count": 4
+  }
+}

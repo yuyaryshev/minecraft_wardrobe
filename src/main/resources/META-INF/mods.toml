@@ -1,0 +1,30 @@
+modLoader="javafml"
+loaderVersion="[43,)"
+license="The MIT License (MIT)"
+issueTrackerURL="https://example.com/issues"
+
+[[mods]]
+modId="yy_wardrobe"
+version="${file.jarVersion}"
+displayName="Wardrobe"
+displayURL="https://example.com"
+#credits=""
+authors="yymod"
+description='''
+Wardrobe adds a configurable inventory system for unloading unwanted items and refilling needed ones.
+'''
+
+[[dependencies.yy_wardrobe]]
+    modId="forge"
+    mandatory=true
+    versionRange="[47.0.0,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.yy_wardrobe]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.20,1.21)"
+    ordering="NONE"
+    side="BOTH"
+

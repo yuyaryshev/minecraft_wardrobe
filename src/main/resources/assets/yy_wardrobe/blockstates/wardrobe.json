@@ -1,0 +1,12 @@
+{
+  "variants": {
+    "facing=north,half=lower": { "model": "yy_wardrobe:block/wardrobe_lower", "y": 180 },
+    "facing=south,half=lower": { "model": "yy_wardrobe:block/wardrobe_lower" },
+    "facing=west,half=lower": { "model": "yy_wardrobe:block/wardrobe_lower", "y": 90 },
+    "facing=east,half=lower": { "model": "yy_wardrobe:block/wardrobe_lower", "y": 270 },
+    "facing=north,half=upper": { "model": "yy_wardrobe:block/wardrobe_upper", "y": 180 },
+    "facing=south,half=upper": { "model": "yy_wardrobe:block/wardrobe_upper" },
+    "facing=west,half=upper": { "model": "yy_wardrobe:block/wardrobe_upper", "y": 90 },
+    "facing=east,half=upper": { "model": "yy_wardrobe:block/wardrobe_upper", "y": 270 }
+  }
+}
