@@ -39,6 +39,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private final Set<Integer> dragSlots = new HashSet<>();
     private boolean dragActive = false;
     private String lastSentName = "";
+    private Slot hoveredSlot = null;
 
     public WardrobeScreen(WardrobeMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -92,8 +93,13 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(guiGraphics);
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
+        renderBg(guiGraphics, partialTick, mouseX, mouseY);
+        hoveredSlot = getSlotAt(mouseX, mouseY);
         renderItemOverrides(guiGraphics);
+        renderLabels(guiGraphics, mouseX, mouseY);
+        for (var renderable : renderables) {
+            renderable.render(guiGraphics, mouseX, mouseY, partialTick);
+        }
         renderTooltip(guiGraphics, mouseX, mouseY);
         renderOverlays(guiGraphics);
     }
@@ -152,7 +158,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (menu.isSetupMode()) {
-            Slot slot = getSlotUnderMouse();
+            Slot slot = getSlotAt(mouseX, mouseY);
             if (slot != null) {
                 int slotIndex = menuSlotToWardrobeIndex(slot);
                 if (slotIndex >= 0) {
@@ -169,7 +175,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (!menu.isSetupMode() && button == 0) {
             dragActive = true;
-            Slot slot = getSlotUnderMouse();
+            Slot slot = getSlotAt(mouseX, mouseY);
             if (slot != null) {
                 int slotIndex = menuSlotToWardrobeIndex(slot);
                 if (slotIndex >= 0 && dragSlots.add(slotIndex)) {
@@ -408,15 +414,38 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             int x = leftPos + slot.x;
             int y = topPos + slot.y;
             guiGraphics.renderItem(stack, x, y);
-            String overlay = menu.isSetupMode() ? " " : "1";
-            guiGraphics.renderItemDecorations(font, stack, x, y, overlay);
+            if (!menu.isSetupMode()) {
+                guiGraphics.renderItemDecorations(font, stack, x, y, "1");
+            }
         }
 
-        Slot hovered = getSlotUnderMouse();
-        if (hovered != null && hovered.isActive()) {
-            int x = leftPos + hovered.x;
-            int y = topPos + hovered.y;
-            renderSlotHighlight(guiGraphics, x, y, 0, getSlotColor(hovered.getSlotIndex()));
+        if (hoveredSlot != null && hoveredSlot.isActive()) {
+            int x = leftPos + hoveredSlot.x;
+            int y = topPos + hoveredSlot.y;
+            renderSlotHighlight(guiGraphics, x, y, 0, getSlotColor(hoveredSlot.getSlotIndex()));
         }
+    }
+
+    @Override
+    protected void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (hoveredSlot != null && hoveredSlot.hasItem()) {
+            ItemStack stack = hoveredSlot.getItem();
+            guiGraphics.renderTooltip(font, getTooltipFromItem(minecraft, stack), stack.getTooltipImage(), mouseX, mouseY);
+            return;
+        }
+        super.renderTooltip(guiGraphics, mouseX, mouseY);
+    }
+
+    private Slot getSlotAt(double mouseX, double mouseY) {
+        int left = leftPos;
+        int top = topPos;
+        for (Slot slot : menu.slots) {
+            int x = left + slot.x;
+            int y = top + slot.y;
+            if (mouseX >= x && mouseX < x + 16 && mouseY >= y && mouseY < y + 16) {
+                return slot;
+            }
+        }
+        return null;
     }
 }
