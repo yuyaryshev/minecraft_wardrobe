@@ -33,6 +33,20 @@ public class WardrobeSlotConfig {
         return mode;
     }
 
+    public WardrobeSlotMode getEffectiveMode() {
+        if (!isBound()) {
+            return WardrobeSlotMode.NONE;
+        }
+        int maxStack = boundItem.getMaxStackSize();
+        if (minCount == 0 && maxCount < maxStack) {
+            return WardrobeSlotMode.UNLOAD;
+        }
+        if (minCount > 0 && maxCount == maxStack) {
+            return WardrobeSlotMode.LOAD;
+        }
+        return mode;
+    }
+
     public void setMode(WardrobeSlotMode mode) {
         this.mode = mode;
     }

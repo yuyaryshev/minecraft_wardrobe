@@ -1,11 +1,9 @@
 package com.yymod.wardrobe.content.transfer;
 
-import com.yymod.wardrobe.content.block.WardrobeBlock;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.data.WardrobeSlotMode;
 import com.yymod.wardrobe.content.data.WardrobeSetup;
-import com.yymod.wardrobe.registry.WardrobeBlocks;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -29,7 +27,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class WardrobeTransfer {
-    private static final int CONNECTION_LIMIT = 16;
     public static final int HIGHLIGHT_NONE = 0;
     public static final int HIGHLIGHT_LOAD_OK = 1;
     public static final int HIGHLIGHT_LOAD_MISSING = 2;
@@ -61,8 +58,9 @@ public class WardrobeTransfer {
             }
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
+            WardrobeSlotMode mode = config.getEffectiveMode();
             if (!current.isEmpty() && !ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
-                if (config.getMode().allowsUnload()) {
+                if (mode.allowsUnload()) {
                     ItemStack remainder = unloadStack(wardrobe, config, current, inputHandlers, outputHandler);
                     setPlayerSlot(player.getInventory(), slotIndex, remainder);
                     if (!remainder.isEmpty()) {
@@ -74,7 +72,7 @@ public class WardrobeTransfer {
             }
 
             if (!current.isEmpty() && ItemStack.isSameItemSameTags(current, config.getBoundItem())
-                    && config.getMode().allowsUnload()) {
+                    && mode.allowsUnload()) {
                 int maxAllowed = normalizeMax(config, current);
                 if (current.getCount() > maxAllowed) {
                     int excess = current.getCount() - maxAllowed;
@@ -91,7 +89,7 @@ public class WardrobeTransfer {
             }
 
             current = getPlayerSlot(player.getInventory(), slotIndex);
-            if (config.getMode().allowsLoad()) {
+            if (mode.allowsLoad()) {
                 int minNeeded = normalizeMin(config, current);
                 if (current.isEmpty() || ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
                     int missing = minNeeded - current.getCount();
@@ -133,20 +131,21 @@ public class WardrobeTransfer {
             }
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
+            WardrobeSlotMode mode = config.getEffectiveMode();
             if (!current.isEmpty() && !ItemStack.isSameItemSameTags(current, config.getBoundItem())
-                    && config.getMode().allowsUnload()) {
+                    && mode.allowsUnload()) {
                 highlights[slotIndex] = HIGHLIGHT_UNLOAD;
                 continue;
             }
 
             int maxAllowed = normalizeMax(config, current.isEmpty() ? config.getBoundItem() : current);
-            if (!current.isEmpty() && config.getMode().allowsUnload() && current.getCount() > maxAllowed) {
+            if (!current.isEmpty() && mode.allowsUnload() && current.getCount() > maxAllowed) {
                 highlights[slotIndex] = HIGHLIGHT_UNLOAD;
                 continue;
             }
 
             int minNeeded = normalizeMin(config, current);
-            if (config.getMode().allowsLoad() && (current.isEmpty() || ItemStack.isSameItemSameTags(current, config.getBoundItem()))
+            if (mode.allowsLoad() && (current.isEmpty() || ItemStack.isSameItemSameTags(current, config.getBoundItem()))
                     && current.getCount() < minNeeded) {
                 int needed = minNeeded - current.getCount();
                 int available = inputCounts.getOrDefault(ItemKey.fromStack(config.getBoundItem()), 0);
@@ -200,7 +199,7 @@ public class WardrobeTransfer {
             WardrobeSetup setup = wardrobe.getSetup(i);
             for (int slotIndex = 0; slotIndex < WardrobeSlotConfig.SLOT_COUNT; slotIndex++) {
                 WardrobeSlotConfig config = setup.getSlot(slotIndex);
-                if (config.isBound() && config.getMode().allowsLoad()
+                if (config.isBound() && config.getEffectiveMode().allowsLoad()
                         && ItemStack.isSameItemSameTags(config.getBoundItem(), stack)) {
                     return true;
                 }
@@ -293,16 +292,15 @@ public class WardrobeTransfer {
     private static List<IItemHandler> findInputHandlers(WardrobeBlockEntity wardrobe, Level level) {
         List<IItemHandler> handlers = new ArrayList<>();
         BlockPos pos = wardrobe.getBlockPos();
-        Direction back = level.getBlockState(pos).getValue(WardrobeBlock.FACING).getOpposite();
-        for (int i = 1; i <= CONNECTION_LIMIT; i++) {
-            BlockPos connectionPos = pos.relative(back, i);
-            if (!level.getBlockState(connectionPos).is(WardrobeBlocks.WARDROBE_CONNECTION.get())) {
-                break;
+        for (Direction direction : Direction.values()) {
+            if (direction == Direction.DOWN) {
+                continue;
             }
-            BlockPos inventoryPos = connectionPos.relative(back);
+            BlockPos inventoryPos = pos.relative(direction);
             BlockEntity blockEntity = level.getBlockEntity(inventoryPos);
             if (blockEntity != null) {
-                blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, null)
+                Direction side = direction.getOpposite();
+                blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, side)
                         .ifPresent(handlers::add);
             }
         }
@@ -316,7 +314,7 @@ public class WardrobeTransfer {
         if (blockEntity == null) {
             return null;
         }
-        return blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, null).orElse(null);
+        return blockEntity.getCapability(ForgeCapabilities.ITEM_HANDLER, Direction.UP).orElse(null);
     }
 
     private static Map<ItemKey, Integer> countItems(List<IItemHandler> handlers) {

@@ -163,6 +163,17 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!menu.isSetupMode()) {
+            Slot slot = getSlotAt(mouseX, mouseY);
+            if (slot != null) {
+                int slotIndex = menuSlotToWardrobeIndex(slot);
+                if (slotIndex >= 0) {
+                    WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
+                            WardrobeActionPacket.Action.OPERATE_SLOT, slotIndex, false, 0, false, false, ""));
+                    return true;
+                }
+            }
+        }
         if (menu.isSetupMode()) {
             Slot slot = getSlotAt(mouseX, mouseY);
             if (slot != null) {
@@ -304,10 +315,14 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
                 continue;
             }
             WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
-            if (!config.isBound() || config.getMode() == com.yymod.wardrobe.content.data.WardrobeSlotMode.NONE) {
+            if (!config.isBound()) {
                 continue;
             }
-            int color = switch (config.getMode()) {
+            com.yymod.wardrobe.content.data.WardrobeSlotMode mode = config.getEffectiveMode();
+            if (mode == com.yymod.wardrobe.content.data.WardrobeSlotMode.NONE) {
+                continue;
+            }
+            int color = switch (mode) {
                 case BOTH -> COLOR_BORDER_BLUE;
                 case UNLOAD -> COLOR_BORDER_RED;
                 case LOAD -> COLOR_BORDER_GREEN;
