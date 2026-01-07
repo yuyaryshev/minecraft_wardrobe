@@ -31,8 +31,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private static final int COLOR_BORDER_BLUE = 0xFF4A76FF;
     private static final int COLOR_BORDER_GREEN = 0xFF3FD46B;
     private static final int COLOR_BORDER_RED = 0xFFE04848;
-    private static final int COLOR_PRESET_GRAY = 0x88C0C0C0;
-    private static final int COLOR_PRESET_SEPIA = 0x66C9A15F;
+    private static final int COLOR_PRESET_DARKEN = 0x4D000000;
 
     private Button modeButton;
     private Button transferButton;
@@ -422,6 +421,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             renderSetupCounts(guiGraphics);
         } else {
             renderOperationalMarkers(guiGraphics);
+            renderOperationalPresetOverlays(guiGraphics);
         }
         RenderSystem.depthFunc(515);
         RenderSystem.enableDepthTest();
@@ -446,11 +446,27 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             int x = leftPos + slot.x;
             int y = topPos + slot.y;
             guiGraphics.renderItem(bound, x, y);
-            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_GRAY);
-            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_SEPIA);
         }
     }
 
+    private void renderOperationalPresetOverlays(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0 || slot.hasItem()) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            if (config.getBoundItem().isEmpty()) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_DARKEN);
+        }
+    }
     private String getFastTransferLabel(WardrobeFastTransferMode mode) {
         return switch (mode) {
             case NONE -> "Fast transfer: None";
