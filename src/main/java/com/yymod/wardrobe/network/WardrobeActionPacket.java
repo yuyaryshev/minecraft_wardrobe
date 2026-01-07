@@ -31,7 +31,7 @@ public record WardrobeActionPacket(BlockPos pos, Action action, int index, boole
     public enum Action {
         TOGGLE_MODE,
         SELECT_SETUP,
-        TOGGLE_RIGHT_CLICK,
+        SET_FAST_TRANSFER,
         TRANSFER_ALL,
         OPERATE_SLOT,
         ADJUST_COUNT,

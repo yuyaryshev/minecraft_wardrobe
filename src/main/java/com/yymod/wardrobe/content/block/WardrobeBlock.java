@@ -1,6 +1,7 @@
 package com.yymod.wardrobe.content.block;
 
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
+import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerPlayer;
@@ -106,9 +107,17 @@ public class WardrobeBlock extends Block implements EntityBlock {
             return InteractionResult.CONSUME;
         }
 
-        if (!player.isShiftKeyDown() && wardrobe.isOperationalMode() && wardrobe.isRightClickEnabled()) {
-            wardrobe.transferItems((ServerPlayer) player, null);
-            return InteractionResult.CONSUME;
+        if (wardrobe.isOperationalMode()) {
+            WardrobeFastTransferMode mode = wardrobe.getFastTransferMode();
+            boolean shouldTransfer = switch (mode) {
+                case RIGHT_CLICK -> !player.isShiftKeyDown();
+                case SHIFT_CLICK -> player.isShiftKeyDown();
+                case NONE -> false;
+            };
+            if (shouldTransfer) {
+                wardrobe.transferItems((ServerPlayer) player, null);
+                return InteractionResult.CONSUME;
+            }
         }
 
         NetworkHooks.openScreen((ServerPlayer) player, wardrobe, basePos);

@@ -2,6 +2,7 @@ package com.yymod.wardrobe.client.screen;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
+import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.menu.WardrobeMenu;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
@@ -164,6 +165,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!menu.isSetupMode()) {
+            if (!hasShiftDown()) {
+                return super.mouseClicked(mouseX, mouseY, button);
+            }
             Slot slot = getSlotAt(mouseX, mouseY);
             if (slot != null) {
                 int slotIndex = menuSlotToWardrobeIndex(slot);
@@ -173,6 +177,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
                     return true;
                 }
             }
+            return super.mouseClicked(mouseX, mouseY, button);
         }
         if (menu.isSetupMode()) {
             Slot slot = getSlotAt(mouseX, mouseY);
@@ -190,7 +195,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (!menu.isSetupMode() && button == 0) {
+        if (!menu.isSetupMode() && button == 0 && hasShiftDown()) {
             dragActive = true;
             Slot slot = getSlotAt(mouseX, mouseY);
             if (slot != null) {
@@ -237,9 +242,14 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     }
 
     private void toggleRightClick() {
-        boolean next = !menu.isRightClickEnabled();
+        WardrobeFastTransferMode current = menu.getFastTransferMode();
+        WardrobeFastTransferMode next = switch (current) {
+            case NONE -> WardrobeFastTransferMode.RIGHT_CLICK;
+            case RIGHT_CLICK -> WardrobeFastTransferMode.SHIFT_CLICK;
+            case SHIFT_CLICK -> WardrobeFastTransferMode.NONE;
+        };
         WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
-                WardrobeActionPacket.Action.TOGGLE_RIGHT_CLICK, 0, next, 0, false, false, ""));
+                WardrobeActionPacket.Action.SET_FAST_TRANSFER, next.ordinal(), false, 0, false, false, ""));
     }
 
     private void renameActiveSetup(String text) {
@@ -381,7 +391,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         modeButton.setMessage(menu.isSetupMode() ? Component.literal("Setup") : Component.literal("Operational"));
         transferButton.visible = !menu.isSetupMode();
         rightClickButton.visible = menu.isSetupMode();
-        rightClickButton.setMessage(Component.literal(menu.isRightClickEnabled() ? "Right click: On" : "Right click: Off"));
+        rightClickButton.setMessage(Component.literal(getFastTransferLabel(menu.getFastTransferMode())));
         setupNameBox.setVisible(menu.isSetupMode());
         setupNameBox.setEditable(menu.isSetupMode());
 
@@ -414,6 +424,14 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
         guiGraphics.pose().popPose();
+    }
+
+    private String getFastTransferLabel(WardrobeFastTransferMode mode) {
+        return switch (mode) {
+            case NONE -> "Fast transfer: None";
+            case RIGHT_CLICK -> "Fast transfer: Right click";
+            case SHIFT_CLICK -> "Fast transfer: Shift-click";
+        };
     }
 
     private void renderOperationalMarkers(GuiGraphics guiGraphics) {

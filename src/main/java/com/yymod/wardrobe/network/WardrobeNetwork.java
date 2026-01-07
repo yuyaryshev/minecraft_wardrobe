@@ -3,6 +3,7 @@ package com.yymod.wardrobe.network;
 import com.yymod.wardrobe.YYWardrobe;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
 import com.yymod.wardrobe.client.WardrobeClientHandler;
+import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -59,7 +60,7 @@ public class WardrobeNetwork {
             switch (packet.action()) {
                 case TOGGLE_MODE -> wardrobe.setSetupMode(packet.flag());
                 case SELECT_SETUP -> wardrobe.setActiveSetupIndex(packet.index());
-                case TOGGLE_RIGHT_CLICK -> wardrobe.setRightClickEnabled(packet.flag());
+                case SET_FAST_TRANSFER -> wardrobe.setFastTransferMode(WardrobeFastTransferMode.fromIndex(packet.index()));
                 case TRANSFER_ALL -> wardrobe.transferItems(serverPlayer, null);
                 case OPERATE_SLOT -> {
                     Set<Integer> slots = new HashSet<>();

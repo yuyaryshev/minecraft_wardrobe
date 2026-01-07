@@ -3,6 +3,7 @@ package com.yymod.wardrobe.content.block.entity;
 import com.yymod.wardrobe.YYWardrobe;
 import com.yymod.wardrobe.content.data.WardrobeSetup;
 import com.yymod.wardrobe.content.menu.WardrobeMenu;
+import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.data.WardrobeSlotMode;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
@@ -38,7 +39,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
     private final List<WardrobeSetup> setups = new ArrayList<>();
     private int activeSetup = 0;
     private boolean setupMode = true;
-    private boolean enableRightClick = true;
+    private WardrobeFastTransferMode fastTransferMode = WardrobeFastTransferMode.RIGHT_CLICK;
     private boolean outputFull = false;
     private String lastError = "";
 
@@ -81,12 +82,12 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
         markUpdated();
     }
 
-    public boolean isRightClickEnabled() {
-        return enableRightClick;
+    public WardrobeFastTransferMode getFastTransferMode() {
+        return fastTransferMode;
     }
 
-    public void setRightClickEnabled(boolean enableRightClick) {
-        this.enableRightClick = enableRightClick;
+    public void setFastTransferMode(WardrobeFastTransferMode mode) {
+        this.fastTransferMode = mode == null ? WardrobeFastTransferMode.NONE : mode;
         markUpdated();
     }
 
@@ -204,7 +205,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
         super.saveAdditional(tag);
         tag.putInt("ActiveSetup", activeSetup);
         tag.putBoolean("SetupMode", setupMode);
-        tag.putBoolean("EnableRightClick", enableRightClick);
+        tag.putInt("FastTransferMode", fastTransferMode.ordinal());
         tag.putString("LastError", lastError);
 
         ListTag setupList = new ListTag();
@@ -221,7 +222,13 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
         super.load(tag);
         activeSetup = tag.getInt("ActiveSetup");
         setupMode = tag.getBoolean("SetupMode");
-        enableRightClick = tag.getBoolean("EnableRightClick");
+        if (tag.contains("FastTransferMode")) {
+            fastTransferMode = WardrobeFastTransferMode.fromIndex(tag.getInt("FastTransferMode"));
+        } else {
+            fastTransferMode = tag.getBoolean("EnableRightClick")
+                    ? WardrobeFastTransferMode.RIGHT_CLICK
+                    : WardrobeFastTransferMode.NONE;
+        }
         lastError = tag.getString("LastError");
 
         ListTag setupList = tag.getList("Setups", Tag.TAG_COMPOUND);

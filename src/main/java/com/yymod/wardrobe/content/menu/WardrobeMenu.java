@@ -1,6 +1,7 @@
 package com.yymod.wardrobe.content.menu;
 
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
+import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.data.WardrobeSlotMode;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
@@ -51,7 +52,8 @@ public class WardrobeMenu extends AbstractContainerMenu {
 
         addIntDataSlot(blockEntity::getActiveSetupIndex, blockEntity::setActiveSetupIndex);
         addIntDataSlot(() -> blockEntity.isSetupMode() ? 1 : 0, value -> blockEntity.setSetupMode(value != 0));
-        addIntDataSlot(() -> blockEntity.isRightClickEnabled() ? 1 : 0, value -> blockEntity.setRightClickEnabled(value != 0));
+        addIntDataSlot(() -> blockEntity.getFastTransferMode().ordinal(),
+                value -> blockEntity.setFastTransferMode(WardrobeFastTransferMode.fromIndex(value)));
         addIntDataSlot(() -> blockEntity.isOutputFull() ? 1 : 0, value -> blockEntity.setOutputFull(value != 0));
 
         for (int i = 0; i < slotHighlights.length; i++) {
@@ -126,8 +128,8 @@ public class WardrobeMenu extends AbstractContainerMenu {
         return blockEntity.isSetupMode();
     }
 
-    public boolean isRightClickEnabled() {
-        return blockEntity.isRightClickEnabled();
+    public WardrobeFastTransferMode getFastTransferMode() {
+        return blockEntity.getFastTransferMode();
     }
 
     public String getLastError() {
@@ -152,7 +154,7 @@ public class WardrobeMenu extends AbstractContainerMenu {
             if (blockEntity.isSetupMode()) {
                 handleSetupSlotClick(player, playerSlotIndex, slotId, button);
                 return;
-            } else {
+            } else if (player.isShiftKeyDown()) {
                 if (player instanceof ServerPlayer serverPlayer) {
                     Set<Integer> slots = new HashSet<>();
                     slots.add(playerSlotIndex);
