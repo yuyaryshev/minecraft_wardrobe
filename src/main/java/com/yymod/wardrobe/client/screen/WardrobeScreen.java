@@ -31,6 +31,8 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private static final int COLOR_BORDER_BLUE = 0xFF4A76FF;
     private static final int COLOR_BORDER_GREEN = 0xFF3FD46B;
     private static final int COLOR_BORDER_RED = 0xFFE04848;
+    private static final int COLOR_PRESET_GRAY = 0x88C0C0C0;
+    private static final int COLOR_PRESET_SEPIA = 0x66C9A15F;
 
     private Button modeButton;
     private Button transferButton;
@@ -107,6 +109,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         } else {
             hoveredSlot = null;
             super.render(guiGraphics, mouseX, mouseY, partialTick);
+            renderOperationalPresets(guiGraphics);
             renderOverlays(guiGraphics);
         }
     }
@@ -378,11 +381,11 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
             if (showMax) {
                 String maxText = Integer.toString(maxCount);
-                guiGraphics.drawString(font, maxText, x + 16 - font.width(maxText), y + 1, 0xFFFFFFFF, false);
+                guiGraphics.drawString(font, maxText, x + 17 - font.width(maxText), y + 1, 0xFFFFFFFF, false);
             }
             if (showMin) {
                 String minText = Integer.toString(minCount);
-                guiGraphics.drawString(font, minText, x + 16 - font.width(minText), y + 9, 0xFFFFFFFF, false);
+                guiGraphics.drawString(font, minText, x + 17 - font.width(minText), y + 9, 0xFFFFFFFF, false);
             }
         }
     }
@@ -424,6 +427,28 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
         guiGraphics.pose().popPose();
+    }
+
+    private void renderOperationalPresets(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0 || slot.hasItem()) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            ItemStack bound = config.getBoundItem();
+            if (bound.isEmpty()) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            guiGraphics.renderItem(bound, x, y);
+            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_GRAY);
+            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_SEPIA);
+        }
     }
 
     private String getFastTransferLabel(WardrobeFastTransferMode mode) {
