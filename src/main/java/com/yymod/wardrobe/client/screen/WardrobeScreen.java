@@ -427,9 +427,6 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             if (slot == null) {
                 continue;
             }
-            int x1 = left + slot.x;
-            int y1 = top + slot.y;
-            guiGraphics.drawString(font, "X", x1 + 5, y1 + 3, 0xFFFFFFFF, false);
         }
     }
 

@@ -45,6 +45,7 @@ public class WardrobeTransfer {
         List<IItemHandler> inputHandlers = findInputHandlers(wardrobe, level);
         IItemHandler outputHandler = findOutputHandler(wardrobe, level);
         WardrobeSetup setup = wardrobe.getActiveSetup();
+        Map<ItemKey, ItemStack> buffered = new HashMap<>();
 
         boolean outputFull = false;
 
@@ -58,41 +59,48 @@ public class WardrobeTransfer {
             }
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
-            WardrobeSlotMode mode = config.getEffectiveMode();
             if (!current.isEmpty() && !ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
-                if (mode.allowsUnload()) {
-                    ItemStack remainder = unloadStack(wardrobe, config, current, inputHandlers, outputHandler);
-                    setPlayerSlot(player.getInventory(), slotIndex, remainder);
-                    if (!remainder.isEmpty()) {
-                        outputFull = true;
-                    } else {
-                        current = ItemStack.EMPTY;
-                    }
-                }
+                addToBuffer(buffered, current);
+                setPlayerSlot(player.getInventory(), slotIndex, ItemStack.EMPTY);
+                current = ItemStack.EMPTY;
             }
 
-            if (!current.isEmpty() && ItemStack.isSameItemSameTags(current, config.getBoundItem())
-                    && mode.allowsUnload()) {
+            if (!current.isEmpty() && ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
                 int maxAllowed = normalizeMax(config, current);
                 if (current.getCount() > maxAllowed) {
                     int excess = current.getCount() - maxAllowed;
                     ItemStack excessStack = current.copy();
                     excessStack.setCount(excess);
-                    ItemStack remainder = unloadStack(wardrobe, config, excessStack, inputHandlers, outputHandler);
-                    int removed = excess - remainder.getCount();
-                    current.shrink(removed);
+                    addToBuffer(buffered, excessStack);
+                    current.shrink(excess);
                     setPlayerSlot(player.getInventory(), slotIndex, current);
-                    if (!remainder.isEmpty()) {
-                        outputFull = true;
-                    }
                 }
             }
 
             current = getPlayerSlot(player.getInventory(), slotIndex);
+            WardrobeSlotMode mode = config.getEffectiveMode();
             if (mode.allowsLoad()) {
                 int minNeeded = normalizeMin(config, current);
                 if (current.isEmpty() || ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
                     int missing = minNeeded - current.getCount();
+                    if (missing > 0) {
+                        ItemKey key = ItemKey.fromStack(config.getBoundItem());
+                        ItemStack bufferedStack = buffered.get(key);
+                        if (bufferedStack != null && !bufferedStack.isEmpty()) {
+                            int toTake = Math.min(missing, bufferedStack.getCount());
+                            if (current.isEmpty()) {
+                                current = config.getBoundItem().copy();
+                                current.setCount(0);
+                            }
+                            current.grow(toTake);
+                            bufferedStack.shrink(toTake);
+                            missing -= toTake;
+                            if (bufferedStack.isEmpty()) {
+                                buffered.remove(key);
+                            }
+                            setPlayerSlot(player.getInventory(), slotIndex, current);
+                        }
+                    }
                     if (missing > 0) {
                         ItemStack toInsert = pullFromInputs(config.getBoundItem(), missing, inputHandlers);
                         if (!toInsert.isEmpty()) {
@@ -104,6 +112,21 @@ public class WardrobeTransfer {
                             setPlayerSlot(player.getInventory(), slotIndex, current);
                         }
                     }
+                }
+            }
+        }
+
+        if (!buffered.isEmpty()) {
+            for (ItemStack bufferedStack : buffered.values()) {
+                if (bufferedStack.isEmpty()) {
+                    continue;
+                }
+                ItemStack remaining = unloadToPartialInputs(bufferedStack, inputHandlers);
+                if (!remaining.isEmpty() && outputHandler != null) {
+                    remaining = ItemHandlerHelper.insertItemStacked(outputHandler, remaining, false);
+                }
+                if (!remaining.isEmpty()) {
+                    outputFull = true;
                 }
             }
         }
@@ -131,20 +154,19 @@ public class WardrobeTransfer {
             }
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
-            WardrobeSlotMode mode = config.getEffectiveMode();
-            if (!current.isEmpty() && !ItemStack.isSameItemSameTags(current, config.getBoundItem())
-                    && mode.allowsUnload()) {
+            if (!current.isEmpty() && !ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
                 highlights[slotIndex] = HIGHLIGHT_UNLOAD;
                 continue;
             }
 
             int maxAllowed = normalizeMax(config, current.isEmpty() ? config.getBoundItem() : current);
-            if (!current.isEmpty() && mode.allowsUnload() && current.getCount() > maxAllowed) {
+            if (!current.isEmpty() && current.getCount() > maxAllowed) {
                 highlights[slotIndex] = HIGHLIGHT_UNLOAD;
                 continue;
             }
 
             int minNeeded = normalizeMin(config, current);
+            WardrobeSlotMode mode = config.getEffectiveMode();
             if (mode.allowsLoad() && (current.isEmpty() || ItemStack.isSameItemSameTags(current, config.getBoundItem()))
                     && current.getCount() < minNeeded) {
                 int needed = minNeeded - current.getCount();
@@ -165,27 +187,26 @@ public class WardrobeTransfer {
 
     private static ItemStack unloadStack(WardrobeBlockEntity wardrobe, WardrobeSlotConfig config, ItemStack stack,
                                          List<IItemHandler> inputHandlers, @Nullable IItemHandler outputHandler) {
-        boolean preferInput = shouldPreferInput(wardrobe, stack);
-        ItemStack remaining = stack.copy();
-
-        if (preferInput) {
-            remaining = unloadToPreferredInput(remaining, inputHandlers);
-        }
-
+        ItemStack remaining = unloadToPartialInputs(stack.copy(), inputHandlers);
         if (!remaining.isEmpty() && outputHandler != null) {
             remaining = ItemHandlerHelper.insertItemStacked(outputHandler, remaining, false);
         }
-
         return remaining;
     }
 
-    private static ItemStack unloadToPreferredInput(ItemStack stack, List<IItemHandler> inputHandlers) {
+    private static ItemStack unloadToPartialInputs(ItemStack stack, List<IItemHandler> inputHandlers) {
         ItemStack remaining = stack;
-        int twoStacks = stack.getMaxStackSize() * 2;
+        int maxStack = stack.getMaxStackSize();
         for (IItemHandler handler : inputHandlers) {
-            int currentCount = countItem(handler, stack);
-            if (currentCount > 0 && currentCount < twoStacks) {
-                remaining = ItemHandlerHelper.insertItemStacked(handler, remaining, false);
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack existing = handler.getStackInSlot(slot);
+                if (existing.isEmpty() || !ItemStack.isSameItemSameTags(existing, remaining)) {
+                    continue;
+                }
+                if (existing.getCount() >= maxStack) {
+                    continue;
+                }
+                remaining = handler.insertItem(slot, remaining, false);
                 if (remaining.isEmpty()) {
                     return ItemStack.EMPTY;
                 }
@@ -194,18 +215,17 @@ public class WardrobeTransfer {
         return remaining;
     }
 
-    private static boolean shouldPreferInput(WardrobeBlockEntity wardrobe, ItemStack stack) {
-        for (int i = 0; i < WardrobeBlockEntity.SETUP_COUNT; i++) {
-            WardrobeSetup setup = wardrobe.getSetup(i);
-            for (int slotIndex = 0; slotIndex < WardrobeSlotConfig.SLOT_COUNT; slotIndex++) {
-                WardrobeSlotConfig config = setup.getSlot(slotIndex);
-                if (config.isBound() && config.getEffectiveMode().allowsLoad()
-                        && ItemStack.isSameItemSameTags(config.getBoundItem(), stack)) {
-                    return true;
-                }
-            }
+    private static void addToBuffer(Map<ItemKey, ItemStack> buffered, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
         }
-        return false;
+        ItemKey key = ItemKey.fromStack(stack);
+        ItemStack existing = buffered.get(key);
+        if (existing == null) {
+            buffered.put(key, stack.copy());
+        } else {
+            existing.grow(stack.getCount());
+        }
     }
 
     private static ItemStack pullFromInputs(ItemStack template, int amount, List<IItemHandler> inputHandlers) {
@@ -242,13 +262,10 @@ public class WardrobeTransfer {
 
     private static int normalizeMax(WardrobeSlotConfig config, ItemStack current) {
         int max = Math.max(config.getMaxCount(), config.getMinCount());
-        if (max <= 0) {
-            max = current.getMaxStackSize();
-        }
         if (!current.isStackable()) {
-            max = 1;
+            return Math.min(Math.max(max, 1), 1);
         }
-        return max;
+        return Math.max(0, max);
     }
 
     private static int normalizeMin(WardrobeSlotConfig config, ItemStack current) {
