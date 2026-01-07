@@ -21,6 +21,8 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             property 'forge.enabledGameTestNamespaces', 'yy_wardrobe'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg')
 
             mods {
                 yy_wardrobe {
@@ -35,6 +37,8 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             property 'forge.enabledGameTestNamespaces', 'yy_wardrobe'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg')
 
             mods {
                 yy_wardrobe {
@@ -49,6 +53,8 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             property 'forge.enabledGameTestNamespaces', 'yy_wardrobe'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg')
 
             mods {
                 yy_wardrobe {
@@ -63,6 +69,8 @@ minecraft {
             property 'forge.logging.markers', 'REGISTRIES'
             property 'forge.logging.console.level', 'debug'
             args '--mod', 'yy_wardrobe', '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', file('build/createSrgToMcp/output.srg')
 
             mods {
                 yy_wardrobe {
@@ -79,12 +87,16 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 repositories {
     maven { url = "https://maven.minecraftforge.net" }
     mavenCentral()
+    maven { url = "https://maven.theillusivec4.top" }
+    maven { url = "https://api.modrinth.com/maven" }
     maven { url = uri("D:/b/Mine/GIT_Work/minecraft/mods_2025-12-23/minecraft_mcp_for_llm/mcmodsrepo") }
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${mc_version}-${forge_version}"
     implementation fg.deobf("com.yymod.mcpforllm:minecraft_mcp_for_llm:0.1.0-1.20.1")
+    implementation fg.deobf("top.theillusivec4.curios:curios-forge:5.14.1+1.20.1")
+    runtimeOnly fg.deobf("maven.modrinth:curious-armor-stands:1.20-5.1.0")
 }
 
 jar {

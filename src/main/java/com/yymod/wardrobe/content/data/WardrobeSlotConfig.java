@@ -4,7 +4,10 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 
 public class WardrobeSlotConfig {
-    public static final int SLOT_COUNT = 41;
+    public static final int PLAYER_SLOT_COUNT = 41;
+    public static final int CURIOS_SLOT_COUNT = 18;
+    public static final int SLOT_COUNT = PLAYER_SLOT_COUNT + CURIOS_SLOT_COUNT;
+    public static final int CURIOS_SLOT_START = PLAYER_SLOT_COUNT;
 
     private ItemStack boundItem = ItemStack.EMPTY;
     private WardrobeSlotMode mode = WardrobeSlotMode.NONE;

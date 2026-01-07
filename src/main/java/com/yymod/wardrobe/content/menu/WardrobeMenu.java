@@ -9,6 +9,7 @@ import com.yymod.wardrobe.content.data.WardrobeSlotMode;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
 import com.yymod.wardrobe.registry.WardrobeMenus;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.NonNullList;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
@@ -19,11 +20,18 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.type.capability.ICuriosItemHandler;
+import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
+import top.theillusivec4.curios.common.inventory.CurioSlot;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
@@ -49,6 +57,7 @@ public class WardrobeMenu extends AbstractContainerMenu {
     private WardrobeFastTransferMode fastTransferMode;
     private int armorStandScanRange;
     private String lastError = "";
+    private final Map<Integer, Integer> slotIdToWardrobeIndex = new HashMap<>();
 
     public WardrobeMenu(int id, Inventory playerInventory, FriendlyByteBuf buffer) {
         this(id, playerInventory, resolveBlockEntity(playerInventory, buffer));
@@ -67,6 +76,8 @@ public class WardrobeMenu extends AbstractContainerMenu {
         }
 
         addSlot(new WardrobeIconSlot(activeIconContainer, blockEntity, 0, ACTIVE_ICON_X, 6, true));
+
+        addCuriosSlots(playerInventory.player);
 
         addPlayerInventorySlots(playerInventory);
 
@@ -112,19 +123,77 @@ public class WardrobeMenu extends AbstractContainerMenu {
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 int index = col + row * 9 + 9;
-                addSlot(new Slot(playerInventory, index, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 84 + row * 18));
+                addMappedSlot(new Slot(playerInventory, index, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 84 + row * 18), index);
             }
         }
 
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(playerInventory, col, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 142));
+            addMappedSlot(new Slot(playerInventory, col, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 142), col);
         }
 
         for (int armorSlot = 0; armorSlot < 4; armorSlot++) {
-            addSlot(new Slot(playerInventory, 39 - armorSlot, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 84 + armorSlot * 18));
+            int index = 39 - armorSlot;
+            addMappedSlot(new Slot(playerInventory, index, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 84 + armorSlot * 18), index);
         }
 
-        addSlot(new Slot(playerInventory, 40, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 154));
+        addMappedSlot(new Slot(playerInventory, 40, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 154), 40);
+    }
+
+    private void addCuriosSlots(Player player) {
+        CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
+            int startX = PLAYER_SLOT_OFFSET_X + 80;
+            int startY = 84 - 36;
+            int wardIndex = WardrobeSlotConfig.CURIOS_SLOT_START;
+            for (CurioSlotInfo info : getCurioSlots(handler)) {
+                if (wardIndex >= WardrobeSlotConfig.SLOT_COUNT) {
+                    break;
+                }
+                int col = (wardIndex - WardrobeSlotConfig.CURIOS_SLOT_START) % 9;
+                int row = (wardIndex - WardrobeSlotConfig.CURIOS_SLOT_START) / 9;
+                if (row >= 2) {
+                    break;
+                }
+                int x = startX + col * 18;
+                int y = startY + row * 18;
+                CurioSlot slot = new CurioSlot(player, info.handler, info.index, info.identifier, x, y, info.renders, false);
+                addMappedSlot(slot, wardIndex);
+                wardIndex++;
+            }
+        });
+    }
+
+    private List<CurioSlotInfo> getCurioSlots(ICuriosItemHandler handler) {
+        Map<String, ICurioStacksHandler> curios = new TreeMap<>(handler.getCurios());
+        List<CurioSlotInfo> slots = new ArrayList<>();
+        for (Map.Entry<String, ICurioStacksHandler> entry : curios.entrySet()) {
+            ICurioStacksHandler stacksHandler = entry.getValue();
+            for (int i = 0; i < stacksHandler.getSlots(); i++) {
+                slots.add(new CurioSlotInfo(entry.getKey(), stacksHandler.getStacks(), i, stacksHandler.getRenders()));
+                if (slots.size() >= WardrobeSlotConfig.CURIOS_SLOT_COUNT) {
+                    return slots;
+                }
+            }
+        }
+        return slots;
+    }
+
+    private void addMappedSlot(Slot slot, int wardrobeIndex) {
+        addSlot(slot);
+        slotIdToWardrobeIndex.put(slots.size() - 1, wardrobeIndex);
+    }
+
+    public int getWardrobeSlotIndex(Slot slot) {
+        Integer mapped = slotIdToWardrobeIndex.get(slot.index);
+        if (mapped != null) {
+            return mapped;
+        }
+        return -1;
+    }
+
+    private record CurioSlotInfo(String identifier,
+                                 top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler handler,
+                                 int index,
+                                 NonNullList<Boolean> renders) {
     }
 
     @Override
@@ -357,27 +426,7 @@ public class WardrobeMenu extends AbstractContainerMenu {
     }
 
     private int toWardrobeSlotIndex(int slotId) {
-        if (slotId < PLAYER_SLOT_START) {
-            return -1;
-        }
-        Slot slot = getSlot(slotId);
-        if (!(slot.container instanceof Inventory)) {
-            return -1;
-        }
-        int invIndex = slot.getSlotIndex();
-        if (invIndex < 9) {
-            return invIndex;
-        }
-        if (invIndex < 36) {
-            return invIndex;
-        }
-        if (invIndex < 40) {
-            return 36 + (invIndex - 36);
-        }
-        if (invIndex == 40) {
-            return 40;
-        }
-        return -1;
+        return slotIdToWardrobeIndex.getOrDefault(slotId, -1);
     }
 
     @Override

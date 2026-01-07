@@ -28,3 +28,17 @@ Wardrobe adds a configurable inventory system for unloading unwanted items and r
     ordering="NONE"
     side="BOTH"
 
+[[dependencies.yy_wardrobe]]
+    modId="curios"
+    mandatory=true
+    versionRange="[5.14.1,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.yy_wardrobe]]
+    modId="curious_armor_stands"
+    mandatory=true
+    versionRange="[1.20-5.1.0,)"
+    ordering="NONE"
+    side="BOTH"
+

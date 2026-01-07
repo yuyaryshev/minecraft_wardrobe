@@ -41,6 +41,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.common.capabilities.ForgeCapabilities;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
+import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.SlotContext;
+import top.theillusivec4.curios.api.type.capability.ICuriosItemHandler;
+import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
+import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -48,6 +53,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 
 public class WardrobeTransfer {
     public static final int HIGHLIGHT_NONE = 0;
@@ -59,6 +65,9 @@ public class WardrobeTransfer {
     }
 
     private record EquipmentHandlers(IItemHandler left, IItemHandler right) {
+    }
+
+    private record CurioSlotRef(String identifier, int index, IDynamicStackHandler handler) {
     }
 
     public static WardrobeTransferResult execute(WardrobeBlockEntity wardrobe, ServerPlayer player, @Nullable Set<Integer> onlySlots) {
@@ -425,7 +434,16 @@ public class WardrobeTransfer {
         if (index < 40) {
             return inventory.armor.get(index - 36);
         }
-        return inventory.offhand.get(0);
+        if (index == 40) {
+            return inventory.offhand.get(0);
+        }
+        int curioIndex = index - WardrobeSlotConfig.CURIOS_SLOT_START;
+        List<CurioSlotRef> curios = getCurioSlots(inventory.player);
+        if (curioIndex >= 0 && curioIndex < curios.size()) {
+            CurioSlotRef ref = curios.get(curioIndex);
+            return ref.handler.getStackInSlot(ref.index);
+        }
+        return ItemStack.EMPTY;
     }
 
     private static void setPlayerSlot(Inventory inventory, int index, ItemStack stack) {
@@ -441,7 +459,16 @@ public class WardrobeTransfer {
             inventory.armor.set(index - 36, stack);
             return;
         }
-        inventory.offhand.set(0, stack);
+        if (index == 40) {
+            inventory.offhand.set(0, stack);
+            return;
+        }
+        int curioIndex = index - WardrobeSlotConfig.CURIOS_SLOT_START;
+        List<CurioSlotRef> curios = getCurioSlots(inventory.player);
+        if (curioIndex >= 0 && curioIndex < curios.size()) {
+            CurioSlotRef ref = curios.get(curioIndex);
+            ref.handler.setStackInSlot(ref.index, stack);
+        }
     }
 
     private static List<IItemHandler> findInputHandlers(WardrobeBlockEntity wardrobe, Level level) {
@@ -460,6 +487,24 @@ public class WardrobeTransfer {
             }
         }
         return handlers;
+    }
+
+    private static List<CurioSlotRef> getCurioSlots(Player player) {
+        List<CurioSlotRef> slots = new ArrayList<>();
+        CuriosApi.getCuriosInventory(player).ifPresent(handler -> {
+            Map<String, ICurioStacksHandler> curios = new TreeMap<>(handler.getCurios());
+            for (Map.Entry<String, ICurioStacksHandler> entry : curios.entrySet()) {
+                ICurioStacksHandler stacksHandler = entry.getValue();
+                IDynamicStackHandler stacks = stacksHandler.getStacks();
+                for (int i = 0; i < stacksHandler.getSlots(); i++) {
+                    slots.add(new CurioSlotRef(entry.getKey(), i, stacks));
+                    if (slots.size() >= WardrobeSlotConfig.CURIOS_SLOT_COUNT) {
+                        return;
+                    }
+                }
+            }
+        });
+        return slots;
     }
 
     @Nullable
@@ -612,6 +657,10 @@ public class WardrobeTransfer {
         if (stand == null) {
             return ItemStack.EMPTY;
         }
+        ItemStack curioStack = extractFromArmorStandCurios(stand, config);
+        if (!curioStack.isEmpty()) {
+            return curioStack;
+        }
         EquipmentSlot slot = Mob.getEquipmentSlotForItem(config.getBoundItem());
         ItemStack standStack = stand.getItemBySlot(slot);
         if (standStack.isEmpty() || !matchesConfig(standStack, config)) {
@@ -619,6 +668,32 @@ public class WardrobeTransfer {
         }
         stand.setItemSlot(slot, ItemStack.EMPTY);
         return standStack.copy();
+    }
+
+    private static ItemStack extractFromArmorStandCurios(ArmorStand stand, WardrobeSlotConfig config) {
+        return CuriosApi.getCuriosInventory(stand).map(handler -> {
+            Map<String, ICurioStacksHandler> curios = new TreeMap<>(handler.getCurios());
+            for (Map.Entry<String, ICurioStacksHandler> entry : curios.entrySet()) {
+                ICurioStacksHandler stacksHandler = entry.getValue();
+                IDynamicStackHandler stacks = stacksHandler.getStacks();
+                for (int i = 0; i < stacksHandler.getSlots(); i++) {
+                    ItemStack existing = stacks.getStackInSlot(i);
+                    if (existing.isEmpty()) {
+                        continue;
+                    }
+                    if (!matchesConfig(existing, config)) {
+                        continue;
+                    }
+                    SlotContext ctx = new SlotContext(entry.getKey(), stand, i, false, stacksHandler.isVisible());
+                    if (!CuriosApi.isStackValid(ctx, existing)) {
+                        continue;
+                    }
+                    stacks.setStackInSlot(i, ItemStack.EMPTY);
+                    return existing.copy();
+                }
+            }
+            return ItemStack.EMPTY;
+        }).orElse(ItemStack.EMPTY);
     }
 
     private static ItemStack loadMatchingForExisting(ItemStack current, WardrobeSlotConfig config,
@@ -827,6 +902,9 @@ public class WardrobeTransfer {
     }
 
     private static boolean isEquipmentSlotIndex(int slotIndex) {
+        if (slotIndex >= WardrobeSlotConfig.CURIOS_SLOT_START) {
+            return true;
+        }
         return slotIndex >= 36;
     }
 
@@ -873,6 +951,11 @@ public class WardrobeTransfer {
         if (stand == null) {
             return stack;
         }
+        ItemStack remaining = tryInsertArmorStandCurios(stand, stack, true);
+        if (remaining.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        stack = remaining;
         EquipmentSlot slot = Mob.getEquipmentSlotForItem(stack);
         if (!stand.getItemBySlot(slot).isEmpty()) {
             return stack;
@@ -880,9 +963,9 @@ public class WardrobeTransfer {
         if (stack.getCount() <= 1) {
             return ItemStack.EMPTY;
         }
-        ItemStack remaining = stack.copy();
-        remaining.shrink(1);
-        return remaining;
+        ItemStack leftover = stack.copy();
+        leftover.shrink(1);
+        return leftover;
     }
 
     private static ItemStack tryInsertArmorStand(WardrobeBlockEntity wardrobe, int setupIndex, ItemStack stack) {
@@ -893,6 +976,11 @@ public class WardrobeTransfer {
         if (stand == null) {
             return stack;
         }
+        ItemStack remaining = tryInsertArmorStandCurios(stand, stack, false);
+        if (remaining.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        stack = remaining;
         EquipmentSlot slot = Mob.getEquipmentSlotForItem(stack);
         if (!stand.getItemBySlot(slot).isEmpty()) {
             return stack;
@@ -900,9 +988,44 @@ public class WardrobeTransfer {
         ItemStack placed = stack.copy();
         placed.setCount(1);
         stand.setItemSlot(slot, placed);
-        ItemStack remaining = stack.copy();
-        remaining.shrink(1);
-        return remaining;
+        ItemStack leftover = stack.copy();
+        leftover.shrink(1);
+        return leftover;
+    }
+
+    private static ItemStack tryInsertArmorStandCurios(ArmorStand stand, ItemStack stack, boolean simulate) {
+        if (stack.isEmpty()) {
+            return stack;
+        }
+        return CuriosApi.getCuriosInventory(stand).map(handler -> {
+            Map<String, ICurioStacksHandler> curios = new TreeMap<>(handler.getCurios());
+            for (Map.Entry<String, ICurioStacksHandler> entry : curios.entrySet()) {
+                ICurioStacksHandler stacksHandler = entry.getValue();
+                IDynamicStackHandler stacks = stacksHandler.getStacks();
+                for (int i = 0; i < stacksHandler.getSlots(); i++) {
+                    ItemStack existing = stacks.getStackInSlot(i);
+                    if (!existing.isEmpty()) {
+                        continue;
+                    }
+                    SlotContext ctx = new SlotContext(entry.getKey(), stand, i, false, stacksHandler.isVisible());
+                    if (!CuriosApi.isStackValid(ctx, stack)) {
+                        continue;
+                    }
+                    if (!simulate) {
+                        ItemStack placed = stack.copy();
+                        placed.setCount(1);
+                        stacks.setStackInSlot(i, placed);
+                    }
+                    if (stack.getCount() <= 1) {
+                        return ItemStack.EMPTY;
+                    }
+                    ItemStack leftover = stack.copy();
+                    leftover.shrink(1);
+                    return leftover;
+                }
+            }
+            return stack;
+        }).orElse(stack);
     }
 
     private static ArmorStand getArmorStand(WardrobeBlockEntity wardrobe, int setupIndex) {

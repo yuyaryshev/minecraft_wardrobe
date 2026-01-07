@@ -325,26 +325,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     }
 
     private int menuSlotToWardrobeIndex(Slot slot) {
-        if (!(slot.container instanceof Inventory)) {
-            return -1;
-        }
-        int invIndex = slot.getSlotIndex();
-        if (invIndex < 0) {
-            return -1;
-        }
-        if (invIndex < 9) {
-            return invIndex;
-        }
-        if (invIndex < 36) {
-            return invIndex;
-        }
-        if (invIndex < 40) {
-            return 36 + (invIndex - 36);
-        }
-        if (invIndex == 40) {
-            return 40;
-        }
-        return -1;
+        return menu.getWardrobeSlotIndex(slot);
     }
 
     private void renderSlotBorders(GuiGraphics guiGraphics) {
