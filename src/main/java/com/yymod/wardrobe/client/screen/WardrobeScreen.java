@@ -2,7 +2,6 @@ package com.yymod.wardrobe.client.screen;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
-import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.menu.WardrobeMenu;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
@@ -36,9 +35,11 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
     private Button modeButton;
     private Button transferButton;
-    private Button rightClickButton;
+    private Button settingsButton;
+    private Button unloadAllButton;
     private EditBox setupNameBox;
     private final Button[] setupButtons = new Button[WardrobeBlockEntity.SETUP_COUNT];
+    private final Button[] unloadButtons = new Button[WardrobeBlockEntity.SETUP_COUNT];
     private final Set<Integer> dragSlots = new HashSet<>();
     private boolean dragActive = false;
     private String lastSentName = "";
@@ -46,7 +47,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
     public WardrobeScreen(WardrobeMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
-        imageWidth = 252;
+        imageWidth = WardrobeMenu.MENU_WIDTH;
         imageHeight = 200;
     }
 
@@ -61,14 +62,14 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
                 .size(68, 20)
                 .build());
 
-        transferButton = addRenderableWidget(Button.builder(Component.literal("Transfer"), button -> sendTransfer())
-                .pos(left + imageWidth - 92, top + 28)
-                .size(86, 20)
+        settingsButton = addRenderableWidget(Button.builder(Component.literal("Settings"), button -> openSettings())
+                .pos(left + imageWidth - 74, top + 28)
+                .size(68, 18)
                 .build());
 
-        rightClickButton = addRenderableWidget(Button.builder(Component.literal(""), button -> toggleRightClick())
-                .pos(left + imageWidth - 150, top + 52)
-                .size(140, 18)
+        transferButton = addRenderableWidget(Button.builder(Component.literal("Transfer all"), button -> sendTransfer())
+                .pos(left + imageWidth - 74, top + 48)
+                .size(68, 18)
                 .build());
 
         setupNameBox = new EditBox(font, left + 80, top + 6, 120, 18, Component.literal("Setup name"));
@@ -77,13 +78,24 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         addRenderableWidget(setupNameBox);
 
         for (int i = 0; i < setupButtons.length; i++) {
-            int y = top + 18 + i * 18;
+            int y = top + 28 + i * 18;
             int index = i;
             setupButtons[i] = addRenderableWidget(Button.builder(Component.literal(""), button -> selectSetup(index))
                     .pos(left + 28, y)
-                    .size(44, 18)
+                    .size(68, 18)
+                    .build());
+            unloadButtons[i] = addRenderableWidget(Button.builder(Component.literal("E"), button -> unloadSetup(index))
+                    .pos(left + 28 + 68 + 4, y)
+                    .size(18, 18)
                     .build());
         }
+
+        unloadAllButton = addRenderableWidget(Button.builder(Component.literal("Unload all"), button -> unloadAll())
+                .pos(left + 28, top + 28 + setupButtons.length * 18 + 4)
+                .size(90, 18)
+                .build());
+
+        setupNameBox.setX(left + (imageWidth - 120) / 2);
     }
 
     @Override
@@ -164,6 +176,13 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     @Override
     protected void renderLabels(GuiGraphics guiGraphics, int mouseX, int mouseY) {
         guiGraphics.drawString(font, title, 8, 6, 0xFFFFFFFF, false);
+        if (!menu.isSetupMode()) {
+            String name = menu.getBlockEntity().getActiveSetup().getName();
+            if (!name.isEmpty()) {
+                int x = (imageWidth - 120) / 2;
+                guiGraphics.drawString(font, name, x, 8, 0xFFE6E6E6, false);
+            }
+        }
     }
 
     @Override
@@ -245,15 +264,20 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
                 WardrobeActionPacket.Action.SELECT_SETUP, index, false, 0, false, false, ""));
     }
 
-    private void toggleRightClick() {
-        WardrobeFastTransferMode current = menu.getFastTransferMode();
-        WardrobeFastTransferMode next = switch (current) {
-            case NONE -> WardrobeFastTransferMode.RIGHT_CLICK;
-            case RIGHT_CLICK -> WardrobeFastTransferMode.SHIFT_CLICK;
-            case SHIFT_CLICK -> WardrobeFastTransferMode.NONE;
-        };
+    private void unloadSetup(int index) {
         WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
-                WardrobeActionPacket.Action.SET_FAST_TRANSFER, next.ordinal(), false, 0, false, false, ""));
+                WardrobeActionPacket.Action.UNLOAD_SETUP, index, false, 0, false, false, ""));
+    }
+
+    private void unloadAll() {
+        WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
+                WardrobeActionPacket.Action.UNLOAD_ALL, 0, false, 0, false, false, ""));
+    }
+
+    private void openSettings() {
+        if (minecraft != null) {
+            minecraft.setScreen(new WardrobeSettingsScreen(this, menu));
+        }
     }
 
     private void renameActiveSetup(String text) {
@@ -267,6 +291,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     }
 
     private boolean handleQuarterAdjust(Slot slot, int slotIndex, double mouseX, double mouseY, int button) {
+        if (hasShiftDown()) {
+            return false;
+        }
         ItemStack stack = slot.getItem();
         if (stack.isEmpty() || !stack.isStackable()) {
             return false;
@@ -279,7 +306,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         }
 
         boolean adjustMax = y < 8;
-        boolean fast = hasShiftDown();
+        boolean fast = false;
         int delta = button == 0 ? 1 : -1;
 
         WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
@@ -336,7 +363,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             if (mode == com.yymod.wardrobe.content.data.WardrobeSlotMode.NONE) {
                 continue;
             }
-            int color = switch (mode) {
+            int color = config.isEquipmentSlot() ? COLOR_BORDER_GREEN : switch (mode) {
                 case BOTH -> COLOR_BORDER_BLUE;
                 case UNLOAD -> COLOR_BORDER_RED;
                 case LOAD -> COLOR_BORDER_GREEN;
@@ -349,10 +376,11 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             int y1 = top + slot.y - 1;
             int x2 = x1 + 18;
             int y2 = y1 + 18;
-            guiGraphics.fill(x1, y1, x2, y1 + 1, color);
-            guiGraphics.fill(x1, y2 - 1, x2, y2, color);
-            guiGraphics.fill(x1, y1, x1 + 1, y2, color);
-            guiGraphics.fill(x2 - 1, y1, x2, y2, color);
+            int thickness = config.isEquipmentSlot() ? 2 : 1;
+            guiGraphics.fill(x1, y1, x2, y1 + thickness, color);
+            guiGraphics.fill(x1, y2 - thickness, x2, y2, color);
+            guiGraphics.fill(x1, y1, x1 + thickness, y2, color);
+            guiGraphics.fill(x2 - thickness, y1, x2, y2, color);
         }
     }
 
@@ -377,7 +405,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             int maxCount = config.getMaxCount();
             int minCount = config.getMinCount();
             int maxStackSize = bound.getMaxStackSize();
-            boolean showMax = minCount != maxStackSize;
+            boolean showMax = minCount != maxStackSize && maxCount != 0;
             boolean showMin = maxCount != 0;
 
             if (showMax) {
@@ -394,14 +422,15 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private void updateWidgets() {
         modeButton.setMessage(menu.isSetupMode() ? Component.literal("Setup") : Component.literal("Operational"));
         transferButton.visible = !menu.isSetupMode();
-        rightClickButton.visible = menu.isSetupMode();
-        rightClickButton.setMessage(Component.literal(getFastTransferLabel(menu.getFastTransferMode())));
+        settingsButton.visible = true;
+        unloadAllButton.visible = !menu.isSetupMode();
         setupNameBox.setVisible(menu.isSetupMode());
         setupNameBox.setEditable(menu.isSetupMode());
 
         for (int i = 0; i < setupButtons.length; i++) {
             setupButtons[i].visible = true;
             setupButtons[i].setMessage(Component.literal(menu.getBlockEntity().getSetup(i).getName()));
+            unloadButtons[i].visible = !menu.isSetupMode();
         }
 
         if (menu.isSetupMode() && !setupNameBox.isFocused()) {
@@ -423,6 +452,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             renderSetupCounts(guiGraphics);
             renderSetupPresetOverlays(guiGraphics);
             renderSetupMismatchMarkers(guiGraphics);
+            renderSetupMatchMarkers(guiGraphics);
         } else {
             renderOperationalMarkers(guiGraphics);
             renderOperationalPresetOverlays(guiGraphics);
@@ -441,6 +471,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             }
             WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
             if (!config.isBound()) {
+                continue;
+            }
+            if (config.getMaxCount() == 0) {
                 continue;
             }
             ItemStack bound = config.getBoundItem();
@@ -463,6 +496,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             if (!config.isBound()) {
                 continue;
             }
+            if (config.getMaxCount() == 0) {
+                continue;
+            }
             ItemStack bound = config.getBoundItem();
             if (bound.isEmpty()) {
                 continue;
@@ -483,6 +519,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             if (!config.isBound()) {
                 continue;
             }
+            if (config.getMaxCount() == 0) {
+                continue;
+            }
             if (config.getBoundItem().isEmpty()) {
                 continue;
             }
@@ -500,6 +539,9 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             }
             WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
             if (!config.isBound()) {
+                continue;
+            }
+            if (config.getMaxCount() == 0) {
                 continue;
             }
             if (config.getBoundItem().isEmpty()) {
@@ -537,12 +579,31 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             }
         }
     }
-    private String getFastTransferLabel(WardrobeFastTransferMode mode) {
-        return switch (mode) {
-            case NONE -> "Fast transfer: None";
-            case RIGHT_CLICK -> "Fast transfer: Right click";
-            case SHIFT_CLICK -> "Fast transfer: Shift-click";
-        };
+
+    private void renderSetupMatchMarkers(GuiGraphics guiGraphics) {
+        int left = leftPos;
+        int top = topPos;
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            String marker = switch (config.getMatchMode()) {
+                case TAG -> "#";
+                case TYPE -> "T";
+                default -> "";
+            };
+            if (marker.isEmpty()) {
+                continue;
+            }
+            int x = left + slot.x + 1;
+            int y = top + slot.y + 1;
+            guiGraphics.drawString(font, marker, x, y, 0xFFFFFFFF, false);
+        }
     }
 
     private void renderOperationalMarkers(GuiGraphics guiGraphics) {
@@ -585,10 +646,31 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
 
     @Override
     protected void renderTooltip(GuiGraphics guiGraphics, int mouseX, int mouseY) {
-        if (hoveredSlot != null && hoveredSlot.hasItem()) {
-            ItemStack stack = hoveredSlot.getItem();
-            guiGraphics.renderTooltip(font, getTooltipFromItem(minecraft, stack), stack.getTooltipImage(), mouseX, mouseY);
-            return;
+        if (hoveredSlot != null) {
+            if (menu.isSetupMode()) {
+                int slotIndex = menuSlotToWardrobeIndex(hoveredSlot);
+                if (slotIndex >= 0) {
+                    WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+                    if (config.getMatchMode() == com.yymod.wardrobe.content.data.WardrobeMatchMode.TAG
+                            && !config.getMatchTagId().isEmpty()) {
+                        Component tagLine = Component.literal("Tag: " + config.getMatchTagId());
+                        if (hoveredSlot.hasItem()) {
+                            ItemStack stack = hoveredSlot.getItem();
+                            var tooltip = getTooltipFromItem(minecraft, stack);
+                            tooltip.add(tagLine);
+                            guiGraphics.renderTooltip(font, tooltip, stack.getTooltipImage(), mouseX, mouseY);
+                        } else {
+                            guiGraphics.renderTooltip(font, tagLine, mouseX, mouseY);
+                        }
+                        return;
+                    }
+                }
+            }
+            if (hoveredSlot.hasItem()) {
+                ItemStack stack = hoveredSlot.getItem();
+                guiGraphics.renderTooltip(font, getTooltipFromItem(minecraft, stack), stack.getTooltipImage(), mouseX, mouseY);
+                return;
+            }
         }
         super.renderTooltip(guiGraphics, mouseX, mouseY);
     }

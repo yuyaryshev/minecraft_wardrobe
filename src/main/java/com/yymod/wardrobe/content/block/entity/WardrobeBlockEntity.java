@@ -6,6 +6,7 @@ import com.yymod.wardrobe.content.menu.WardrobeMenu;
 import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.data.WardrobeSlotMode;
+import com.yymod.wardrobe.content.data.WardrobeSetupJson;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
 import com.yymod.wardrobe.content.transfer.WardrobeTransferResult;
 import com.yymod.wardrobe.network.WardrobeNetwork;
@@ -20,6 +21,7 @@ import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.MenuProvider;
+import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -30,6 +32,7 @@ import net.minecraftforge.common.util.FakePlayer;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -41,6 +44,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
     private boolean setupMode = true;
     private WardrobeFastTransferMode fastTransferMode = WardrobeFastTransferMode.RIGHT_CLICK;
     private boolean outputFull = false;
+    private int armorStandScanRange = 5;
     private String lastError = "";
 
     public WardrobeBlockEntity(BlockPos pos, BlockState state) {
@@ -58,6 +62,10 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
 
     public WardrobeSetup getActiveSetup() {
         return setups.get(activeSetup);
+    }
+
+    public List<WardrobeSetup> getSetups() {
+        return setups;
     }
 
     public int getActiveSetupIndex() {
@@ -79,6 +87,9 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
 
     public void setSetupMode(boolean setupMode) {
         this.setupMode = setupMode;
+        if (setupMode) {
+            scanArmorStands();
+        }
         markUpdated();
     }
 
@@ -99,6 +110,22 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
         this.outputFull = outputFull;
     }
 
+    public int getArmorStandScanRange() {
+        return armorStandScanRange;
+    }
+
+    public void setArmorStandScanRange(int armorStandScanRange) {
+        int clamped = Math.max(1, Math.min(16, armorStandScanRange));
+        if (this.armorStandScanRange == clamped) {
+            return;
+        }
+        this.armorStandScanRange = clamped;
+        if (setupMode) {
+            scanArmorStands();
+        }
+        markUpdated();
+    }
+
     public String getLastError() {
         return lastError;
     }
@@ -111,6 +138,33 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
     public void clearLastError() {
         this.lastError = "";
         markUpdated();
+    }
+
+    public void applySetupJson(String json, ServerPlayer player) {
+        try {
+            boolean applied = WardrobeSetupJson.applyJson(json, setups, activeSetup);
+            if (!applied) {
+                setLastError("Invalid setup JSON");
+                return;
+            }
+            markUpdated();
+        } catch (Exception ex) {
+            String message = "Setup import failed: " + ex.getMessage();
+            setLastError(message);
+            WardrobeTransfer.notifyPlayerError(player, message);
+        }
+    }
+
+    public void unloadSetup(ServerPlayer player, int setupIndex) {
+        WardrobeTransfer.unloadSetup(this, player, setupIndex);
+    }
+
+    public void equipSetup(ServerPlayer player, int setupIndex) {
+        WardrobeTransfer.equipSetup(this, player, setupIndex);
+    }
+
+    public void unloadAll(ServerPlayer player) {
+        WardrobeTransfer.unloadAll(this, player);
     }
 
     public WardrobeTransferResult transferItems(ServerPlayer player, @Nullable Set<Integer> onlySlots) {
@@ -207,6 +261,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
         tag.putBoolean("SetupMode", setupMode);
         tag.putInt("FastTransferMode", fastTransferMode.ordinal());
         tag.putString("LastError", lastError);
+        tag.putInt("ArmorStandScanRange", armorStandScanRange);
 
         ListTag setupList = new ListTag();
         for (WardrobeSetup setup : setups) {
@@ -230,6 +285,7 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
                     : WardrobeFastTransferMode.NONE;
         }
         lastError = tag.getString("LastError");
+        armorStandScanRange = tag.contains("ArmorStandScanRange") ? tag.getInt("ArmorStandScanRange") : 5;
 
         ListTag setupList = tag.getList("Setups", Tag.TAG_COMPOUND);
         for (int i = 0; i < setups.size(); i++) {
@@ -260,5 +316,25 @@ public class WardrobeBlockEntity extends BlockEntity implements MenuProvider {
     @Override
     public Packet<ClientGamePacketListener> getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    private void scanArmorStands() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        List<ArmorStand> stands = level.getEntitiesOfClass(ArmorStand.class,
+                new net.minecraft.world.phys.AABB(worldPosition).inflate(armorStandScanRange));
+        stands.sort(Comparator.comparingDouble(stand -> stand.distanceToSqr(
+                worldPosition.getX() + 0.5D,
+                worldPosition.getY() + 0.5D,
+                worldPosition.getZ() + 0.5D)));
+        for (int i = 0; i < setups.size(); i++) {
+            if (i < stands.size()) {
+                setups.get(i).setArmorStandPos(stands.get(i).blockPosition());
+            } else {
+                setups.get(i).setArmorStandPos(null);
+            }
+        }
+        markUpdated();
     }
 }

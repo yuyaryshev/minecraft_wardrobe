@@ -4,6 +4,7 @@ import com.yymod.wardrobe.YYWardrobe;
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
 import com.yymod.wardrobe.client.WardrobeClientHandler;
 import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
+import com.yymod.wardrobe.content.data.WardrobePlayerSettings;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -16,7 +17,10 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 public class WardrobeNetwork {
@@ -29,6 +33,7 @@ public class WardrobeNetwork {
     );
 
     private static int messageId = 0;
+    private static final Map<UUID, PasteBuffer> PASTE_BUFFERS = new ConcurrentHashMap<>();
 
     public static void init() {
         CHANNEL.registerMessage(messageId++, WardrobeActionPacket.class, WardrobeActionPacket::encode,
@@ -60,7 +65,9 @@ public class WardrobeNetwork {
             switch (packet.action()) {
                 case TOGGLE_MODE -> wardrobe.setSetupMode(packet.flag());
                 case SELECT_SETUP -> wardrobe.setActiveSetupIndex(packet.index());
-                case SET_FAST_TRANSFER -> wardrobe.setFastTransferMode(WardrobeFastTransferMode.fromIndex(packet.index()));
+                case SET_FAST_TRANSFER -> WardrobePlayerSettings.setFastTransferMode(serverPlayer,
+                        WardrobeFastTransferMode.fromIndex(packet.index()));
+                case SET_SCAN_RANGE -> wardrobe.setArmorStandScanRange(packet.index());
                 case TRANSFER_ALL -> wardrobe.transferItems(serverPlayer, null);
                 case OPERATE_SLOT -> {
                     Set<Integer> slots = new HashSet<>();
@@ -69,6 +76,16 @@ public class WardrobeNetwork {
                 }
                 case ADJUST_COUNT -> wardrobe.adjustSlotCount(packet.index(), packet.adjustMax(), packet.delta(), packet.fast());
                 case RENAME_SETUP -> wardrobe.renameSetup(packet.index(), packet.text());
+                case PASTE_SETUP -> handlePasteSetup(packet, serverPlayer, wardrobe);
+                case UNLOAD_SETUP -> {
+                    wardrobe.setActiveSetupIndex(packet.index());
+                    wardrobe.equipSetup(serverPlayer, packet.index());
+                    wardrobe.transferItems(serverPlayer, null);
+                }
+                case UNLOAD_ALL -> {
+                    wardrobe.unloadAll(serverPlayer);
+                    wardrobe.transferItems(serverPlayer, null);
+                }
             }
         });
         context.setPacketHandled(true);
@@ -80,5 +97,63 @@ public class WardrobeNetwork {
             DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> WardrobeClientHandler.handleError(packet.message()));
         });
         context.setPacketHandled(true);
+    }
+
+    private static void handlePasteSetup(WardrobeActionPacket packet, ServerPlayer player, WardrobeBlockEntity wardrobe) {
+        if (!packet.flag()) {
+            wardrobe.applySetupJson(packet.text(), player);
+            return;
+        }
+        int chunkIndex = packet.index();
+        int totalChunks = packet.delta();
+        if (totalChunks <= 0) {
+            wardrobe.applySetupJson(packet.text(), player);
+            return;
+        }
+        PasteBuffer buffer = PASTE_BUFFERS.computeIfAbsent(player.getUUID(), id -> new PasteBuffer(totalChunks));
+        if (buffer.totalChunks != totalChunks) {
+            buffer = new PasteBuffer(totalChunks);
+            PASTE_BUFFERS.put(player.getUUID(), buffer);
+        }
+        buffer.add(chunkIndex, packet.text());
+        if (buffer.isComplete()) {
+            PASTE_BUFFERS.remove(player.getUUID());
+            wardrobe.applySetupJson(buffer.join(), player);
+        }
+    }
+
+    private static final class PasteBuffer {
+        private final int totalChunks;
+        private final String[] chunks;
+        private int received;
+
+        private PasteBuffer(int totalChunks) {
+            this.totalChunks = totalChunks;
+            this.chunks = new String[totalChunks];
+        }
+
+        private void add(int index, String text) {
+            if (index < 0 || index >= totalChunks) {
+                return;
+            }
+            if (chunks[index] == null) {
+                received++;
+            }
+            chunks[index] = text == null ? "" : text;
+        }
+
+        private boolean isComplete() {
+            return received >= totalChunks;
+        }
+
+        private String join() {
+            StringBuilder builder = new StringBuilder();
+            for (String chunk : chunks) {
+                if (chunk != null) {
+                    builder.append(chunk);
+                }
+            }
+            return builder.toString();
+        }
     }
 }

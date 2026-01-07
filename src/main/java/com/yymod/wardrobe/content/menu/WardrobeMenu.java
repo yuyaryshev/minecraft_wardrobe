@@ -2,6 +2,8 @@ package com.yymod.wardrobe.content.menu;
 
 import com.yymod.wardrobe.content.block.entity.WardrobeBlockEntity;
 import com.yymod.wardrobe.content.data.WardrobeFastTransferMode;
+import com.yymod.wardrobe.content.data.WardrobeMatchMode;
+import com.yymod.wardrobe.content.data.WardrobePlayerSettings;
 import com.yymod.wardrobe.content.data.WardrobeSlotConfig;
 import com.yymod.wardrobe.content.data.WardrobeSlotMode;
 import com.yymod.wardrobe.content.transfer.WardrobeTransfer;
@@ -18,20 +20,34 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.function.IntConsumer;
 import java.util.function.IntSupplier;
 
 public class WardrobeMenu extends AbstractContainerMenu {
+    public static final int MENU_WIDTH = 404;
     private static final int ICON_SLOT_START = 0;
-    private static final int ICON_SLOT_COUNT = 8;
-    private static final int PLAYER_SLOT_START = ICON_SLOT_START + ICON_SLOT_COUNT;
+    private static final int ICON_SLOT_COUNT = WardrobeBlockEntity.SETUP_COUNT;
+    private static final int ACTIVE_ICON_SLOT_COUNT = 1;
+    private static final int ACTIVE_ICON_SLOT_START = ICON_SLOT_START + ICON_SLOT_COUNT;
+    private static final int PLAYER_SLOT_START = ACTIVE_ICON_SLOT_START + ACTIVE_ICON_SLOT_COUNT;
+    private static final int LEFT_PADDING = 8;
+    private static final int ICON_SLOT_X = LEFT_PADDING;
+    private static final int ICON_SLOT_Y_OFFSET = 28;
+    private static final int ACTIVE_ICON_X = (MENU_WIDTH - 120) / 2 - 22;
+    private static final int PLAYER_SLOT_OFFSET_X = (MENU_WIDTH - 252) / 2;
+    private static final int EQUIPMENT_OFFSET_X = 40;
 
     private final WardrobeBlockEntity blockEntity;
     private final Player player;
     private final int[] slotHighlights = new int[WardrobeSlotConfig.SLOT_COUNT];
     private final WardrobeIconContainer iconContainer;
+    private final WardrobeActiveIconContainer activeIconContainer;
+    private WardrobeFastTransferMode fastTransferMode;
+    private int armorStandScanRange;
     private String lastError = "";
 
     public WardrobeMenu(int id, Inventory playerInventory, FriendlyByteBuf buffer) {
@@ -43,18 +59,34 @@ public class WardrobeMenu extends AbstractContainerMenu {
         this.blockEntity = blockEntity;
         this.player = playerInventory.player;
         this.iconContainer = new WardrobeIconContainer(blockEntity);
+        this.activeIconContainer = new WardrobeActiveIconContainer(blockEntity);
+        this.armorStandScanRange = blockEntity.getArmorStandScanRange();
 
         for (int i = 0; i < ICON_SLOT_COUNT; i++) {
-            addSlot(new WardrobeIconSlot(iconContainer, i, 8, 18 + i * 18));
+            addSlot(new WardrobeIconSlot(iconContainer, blockEntity, i, ICON_SLOT_X, ICON_SLOT_Y_OFFSET + i * 18, false));
         }
+
+        addSlot(new WardrobeIconSlot(activeIconContainer, blockEntity, 0, ACTIVE_ICON_X, 6, true));
 
         addPlayerInventorySlots(playerInventory);
 
         addIntDataSlot(blockEntity::getActiveSetupIndex, blockEntity::setActiveSetupIndex);
         addIntDataSlot(() -> blockEntity.isSetupMode() ? 1 : 0, value -> blockEntity.setSetupMode(value != 0));
-        addIntDataSlot(() -> blockEntity.getFastTransferMode().ordinal(),
-                value -> blockEntity.setFastTransferMode(WardrobeFastTransferMode.fromIndex(value)));
+        fastTransferMode = WardrobePlayerSettings.getFastTransferMode(player);
+        addIntDataSlot(() -> WardrobePlayerSettings.getFastTransferMode(player).ordinal(), value -> {
+            WardrobeFastTransferMode mode = WardrobeFastTransferMode.fromIndex(value);
+            fastTransferMode = mode;
+            if (!player.level().isClientSide) {
+                WardrobePlayerSettings.setFastTransferMode(player, mode);
+            }
+        });
         addIntDataSlot(() -> blockEntity.isOutputFull() ? 1 : 0, value -> blockEntity.setOutputFull(value != 0));
+        addIntDataSlot(blockEntity::getArmorStandScanRange, value -> {
+            armorStandScanRange = value;
+            if (!player.level().isClientSide) {
+                blockEntity.setArmorStandScanRange(value);
+            }
+        });
 
         for (int i = 0; i < slotHighlights.length; i++) {
             final int index = i;
@@ -80,19 +112,19 @@ public class WardrobeMenu extends AbstractContainerMenu {
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 int index = col + row * 9 + 9;
-                addSlot(new Slot(playerInventory, index, 80 + col * 18, 84 + row * 18));
+                addSlot(new Slot(playerInventory, index, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 84 + row * 18));
             }
         }
 
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(playerInventory, col, 80 + col * 18, 142));
+            addSlot(new Slot(playerInventory, col, PLAYER_SLOT_OFFSET_X + 80 + col * 18, 142));
         }
 
         for (int armorSlot = 0; armorSlot < 4; armorSlot++) {
-            addSlot(new Slot(playerInventory, 39 - armorSlot, 8, 84 + armorSlot * 18));
+            addSlot(new Slot(playerInventory, 39 - armorSlot, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 84 + armorSlot * 18));
         }
 
-        addSlot(new Slot(playerInventory, 40, 8, 154));
+        addSlot(new Slot(playerInventory, 40, PLAYER_SLOT_OFFSET_X + 8 + EQUIPMENT_OFFSET_X, 154));
     }
 
     @Override
@@ -129,7 +161,11 @@ public class WardrobeMenu extends AbstractContainerMenu {
     }
 
     public WardrobeFastTransferMode getFastTransferMode() {
-        return blockEntity.getFastTransferMode();
+        return fastTransferMode;
+    }
+
+    public int getArmorStandScanRange() {
+        return armorStandScanRange;
     }
 
     public String getLastError() {
@@ -142,6 +178,19 @@ public class WardrobeMenu extends AbstractContainerMenu {
 
     @Override
     public void clicked(int slotId, int button, net.minecraft.world.inventory.ClickType clickType, Player player) {
+        if (slotId == ACTIVE_ICON_SLOT_START && !blockEntity.isSetupMode()) {
+            ItemStack carried = getCarried();
+            if (!carried.isEmpty()) {
+                ItemStack icon = carried.copy();
+                icon.setCount(1);
+                blockEntity.getActiveSetup().setIcon(icon);
+                blockEntity.markUpdated();
+            } else if (button == 1) {
+                blockEntity.getActiveSetup().setIcon(ItemStack.EMPTY);
+                blockEntity.markUpdated();
+            }
+            return;
+        }
         if (slotId >= ICON_SLOT_START && slotId < ICON_SLOT_START + ICON_SLOT_COUNT) {
             if (!blockEntity.isSetupMode()) {
                 blockEntity.setActiveSetupIndex(slotId);
@@ -152,6 +201,14 @@ public class WardrobeMenu extends AbstractContainerMenu {
         int playerSlotIndex = toWardrobeSlotIndex(slotId);
         if (playerSlotIndex >= 0) {
             if (blockEntity.isSetupMode()) {
+                if (clickType == net.minecraft.world.inventory.ClickType.QUICK_MOVE) {
+                    WardrobeSlotConfig config = blockEntity.getActiveSetup().getSlot(playerSlotIndex);
+                    if (config.isBound() && !config.getBoundItem().isEmpty()) {
+                        cycleMatchMode(config);
+                        blockEntity.markUpdated();
+                    }
+                    return;
+                }
                 handleSetupSlotClick(player, playerSlotIndex, slotId, button);
                 return;
             } else if (player.isShiftKeyDown()) {
@@ -183,12 +240,32 @@ public class WardrobeMenu extends AbstractContainerMenu {
             return;
         }
 
+        if (player.isShiftKeyDown() && button == 0) {
+            if (config.isBound() && !config.getBoundItem().isEmpty()) {
+                cycleMatchMode(config);
+                blockEntity.markUpdated();
+            }
+            return;
+        }
+
         if (button == 1) {
+            if (config.isBound() && !config.isAirBound()) {
+                config.clear();
+                blockEntity.markUpdated();
+            } else if (!config.isBound()) {
+                config.setAirBound();
+                blockEntity.markUpdated();
+            }
+            return;
+        }
+
+        if (config.isAirBound()) {
             config.clear();
             blockEntity.markUpdated();
             return;
         }
 
+        boolean wasUnbound = !config.isBound();
         ItemStack carried = getCarried();
         if (!carried.isEmpty()) {
             ItemStack binding = carried.copy();
@@ -199,7 +276,84 @@ public class WardrobeMenu extends AbstractContainerMenu {
             binding.setCount(1);
             config.setBoundItem(binding);
         }
+        if (wasUnbound && config.isBound() && !config.getBoundItem().isEmpty()) {
+            int maxStack = config.getBoundItem().getMaxStackSize();
+            config.setMinCount(maxStack);
+            config.setMaxCount(maxStack);
+            if (wardrobeSlotIndex >= 36 && !config.getBoundItem().isStackable()) {
+                config.setMatchMode(WardrobeMatchMode.EQUIPMENT);
+            }
+        }
         blockEntity.markUpdated();
+    }
+
+    private void cycleMatchMode(WardrobeSlotConfig config) {
+        ItemStack bound = config.getBoundItem();
+        List<String> tags = getItemTagIds(bound);
+        boolean hasTags = !tags.isEmpty();
+        boolean allowType = !bound.isStackable();
+        boolean allowEquipment = !bound.isStackable();
+
+        WardrobeMatchMode current = config.getMatchMode();
+        if (current == WardrobeMatchMode.NORMAL) {
+            if (allowEquipment) {
+                config.setMatchMode(WardrobeMatchMode.EQUIPMENT);
+            } else if (hasTags) {
+                config.setMatchMode(WardrobeMatchMode.TAG);
+                config.setMatchTagId(tags.get(0));
+            } else {
+                config.setMatchMode(WardrobeMatchMode.NORMAL);
+                config.setMatchTagId("");
+            }
+            return;
+        }
+
+        if (current == WardrobeMatchMode.EQUIPMENT) {
+            if (hasTags) {
+                config.setMatchMode(WardrobeMatchMode.TAG);
+                config.setMatchTagId(tags.get(0));
+                return;
+            }
+            if (allowType) {
+                config.setMatchMode(WardrobeMatchMode.TYPE);
+                config.setMatchTagId("");
+                return;
+            }
+            config.setMatchMode(WardrobeMatchMode.NORMAL);
+            config.setMatchTagId("");
+            return;
+        }
+
+        if (current == WardrobeMatchMode.TAG) {
+            if (hasTags) {
+                int idx = tags.indexOf(config.getMatchTagId());
+                if (idx < 0) {
+                    config.setMatchTagId(tags.get(0));
+                    return;
+                }
+                if (idx + 1 < tags.size()) {
+                    config.setMatchTagId(tags.get(idx + 1));
+                    return;
+                }
+            }
+            if (allowType) {
+                config.setMatchMode(WardrobeMatchMode.TYPE);
+                config.setMatchTagId("");
+            } else {
+                config.setMatchMode(WardrobeMatchMode.NORMAL);
+                config.setMatchTagId("");
+            }
+            return;
+        }
+
+        config.setMatchMode(WardrobeMatchMode.NORMAL);
+        config.setMatchTagId("");
+    }
+
+    private List<String> getItemTagIds(ItemStack stack) {
+        List<String> tags = new ArrayList<>();
+        stack.getTags().forEach(tag -> tags.add(tag.location().toString()));
+        return tags;
     }
 
     private int toWardrobeSlotIndex(int slotId) {

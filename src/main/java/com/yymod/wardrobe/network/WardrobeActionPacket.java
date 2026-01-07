@@ -32,9 +32,13 @@ public record WardrobeActionPacket(BlockPos pos, Action action, int index, boole
         TOGGLE_MODE,
         SELECT_SETUP,
         SET_FAST_TRANSFER,
+        SET_SCAN_RANGE,
         TRANSFER_ALL,
         OPERATE_SLOT,
         ADJUST_COUNT,
-        RENAME_SETUP
+        RENAME_SETUP,
+        PASTE_SETUP,
+        UNLOAD_SETUP,
+        UNLOAD_ALL
     }
 }

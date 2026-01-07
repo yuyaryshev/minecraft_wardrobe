@@ -1,13 +1,18 @@
 package com.yymod.wardrobe.content.data;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 
 public class WardrobeSetup {
     private String name = "";
     private ItemStack icon = ItemStack.EMPTY;
+    @Nullable
+    private BlockPos armorStandPos = null;
     private final WardrobeSlotConfig[] slots = new WardrobeSlotConfig[WardrobeSlotConfig.SLOT_COUNT];
 
     public WardrobeSetup() {
@@ -36,10 +41,22 @@ public class WardrobeSetup {
         return slots[index];
     }
 
+    @Nullable
+    public BlockPos getArmorStandPos() {
+        return armorStandPos;
+    }
+
+    public void setArmorStandPos(@Nullable BlockPos armorStandPos) {
+        this.armorStandPos = armorStandPos;
+    }
+
     public void save(CompoundTag tag) {
         tag.putString("Name", name);
         if (!icon.isEmpty()) {
             tag.put("Icon", icon.save(new CompoundTag()));
+        }
+        if (armorStandPos != null) {
+            tag.put("ArmorStandPos", NbtUtils.writeBlockPos(armorStandPos));
         }
         ListTag slotList = new ListTag();
         for (WardrobeSlotConfig slot : slots) {
@@ -56,6 +73,11 @@ public class WardrobeSetup {
             icon = ItemStack.of(tag.getCompound("Icon"));
         } else {
             icon = ItemStack.EMPTY;
+        }
+        if (tag.contains("ArmorStandPos")) {
+            armorStandPos = NbtUtils.readBlockPos(tag.getCompound("ArmorStandPos"));
+        } else {
+            armorStandPos = null;
         }
         ListTag slotList = tag.getList("Slots", Tag.TAG_COMPOUND);
         for (int i = 0; i < slots.length; i++) {
