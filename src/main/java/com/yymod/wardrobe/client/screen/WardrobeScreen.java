@@ -31,7 +31,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private static final int COLOR_BORDER_BLUE = 0xFF4A76FF;
     private static final int COLOR_BORDER_GREEN = 0xFF3FD46B;
     private static final int COLOR_BORDER_RED = 0xFFE04848;
-    private static final int COLOR_PRESET_DARKEN = 0x4D000000;
+    private static final int COLOR_PRESET_DARKEN = 0xA6000000;
 
     private Button modeButton;
     private Button transferButton;
