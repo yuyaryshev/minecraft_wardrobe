@@ -32,6 +32,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     private static final int COLOR_BORDER_GREEN = 0xFF3FD46B;
     private static final int COLOR_BORDER_RED = 0xFFE04848;
     private static final int COLOR_PRESET_DARKEN = 0xA6000000;
+    private static final int COLOR_PRESET_MISMATCH = 0xA6FF3333;
 
     private Button modeButton;
     private Button transferButton;
@@ -98,6 +99,7 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         if (menu.isSetupMode()) {
             renderBg(guiGraphics, partialTick, mouseX, mouseY);
             hoveredSlot = getSlotAt(mouseX, mouseY);
+            renderSetupPresets(guiGraphics);
             renderItemOverrides(guiGraphics);
             renderLabels(guiGraphics, mouseX, mouseY);
             for (var renderable : renderables) {
@@ -419,6 +421,8 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
         renderSlotBorders(guiGraphics);
         if (menu.isSetupMode()) {
             renderSetupCounts(guiGraphics);
+            renderSetupPresetOverlays(guiGraphics);
+            renderSetupMismatchMarkers(guiGraphics);
         } else {
             renderOperationalMarkers(guiGraphics);
             renderOperationalPresetOverlays(guiGraphics);
@@ -430,6 +434,26 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     }
 
     private void renderOperationalPresets(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0 || slot.hasItem()) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            ItemStack bound = config.getBoundItem();
+            if (bound.isEmpty()) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            guiGraphics.renderItem(bound, x, y);
+        }
+    }
+
+    private void renderSetupPresets(GuiGraphics guiGraphics) {
         for (Slot slot : menu.slots) {
             int slotIndex = menuSlotToWardrobeIndex(slot);
             if (slotIndex < 0 || slot.hasItem()) {
@@ -465,6 +489,52 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
             int x = leftPos + slot.x;
             int y = topPos + slot.y;
             guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_DARKEN);
+        }
+    }
+
+    private void renderSetupPresetOverlays(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0 || slot.hasItem()) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            if (config.getBoundItem().isEmpty()) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            guiGraphics.fill(x, y, x + 16, y + 16, COLOR_PRESET_DARKEN);
+        }
+    }
+
+    private void renderSetupMismatchMarkers(GuiGraphics guiGraphics) {
+        for (Slot slot : menu.slots) {
+            int slotIndex = menuSlotToWardrobeIndex(slot);
+            if (slotIndex < 0 || !slot.hasItem()) {
+                continue;
+            }
+            WardrobeSlotConfig config = menu.getBlockEntity().getActiveSetup().getSlot(slotIndex);
+            if (!config.isBound()) {
+                continue;
+            }
+            ItemStack bound = config.getBoundItem();
+            if (bound.isEmpty()) {
+                continue;
+            }
+            ItemStack actual = slot.getItem();
+            if (ItemStack.isSameItemSameTags(actual, bound)) {
+                continue;
+            }
+            int x = leftPos + slot.x;
+            int y = topPos + slot.y;
+            for (int i = 0; i < 5; i++) {
+                guiGraphics.fill(x + i, y + i, x + i + 1, y + i + 1, COLOR_PRESET_MISMATCH);
+                guiGraphics.fill(x + 4 - i, y + i, x + 5 - i, y + i + 1, COLOR_PRESET_MISMATCH);
+            }
         }
     }
     private String getFastTransferLabel(WardrobeFastTransferMode mode) {
