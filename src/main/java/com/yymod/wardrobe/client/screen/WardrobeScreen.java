@@ -242,6 +242,31 @@ public class WardrobeScreen extends AbstractContainerScreen<WardrobeMenu> {
     }
 
     @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (setupNameBox.isFocused()) {
+            if (minecraft != null && minecraft.options.keyInventory.matches(keyCode, scanCode)) {
+                return true;
+            }
+            if (setupNameBox.keyPressed(keyCode, scanCode, modifiers)) {
+                return true;
+            }
+            if (keyCode == 256) {
+                return super.keyPressed(keyCode, scanCode, modifiers);
+            }
+            return true;
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (setupNameBox.isFocused() && setupNameBox.charTyped(codePoint, modifiers)) {
+            return true;
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+    @Override
     public void onClose() {
         super.onClose();
         dragSlots.clear();

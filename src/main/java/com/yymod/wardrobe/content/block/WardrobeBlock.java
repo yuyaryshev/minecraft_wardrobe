@@ -100,7 +100,7 @@ public class WardrobeBlock extends Block implements EntityBlock {
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (level.isClientSide) {
-            return InteractionResult.SUCCESS;
+            return InteractionResult.sidedSuccess(true);
         }
         BlockPos basePos = state.getValue(HALF) == DoubleBlockHalf.LOWER ? pos : pos.below();
         BlockEntity blockEntity = level.getBlockEntity(basePos);
@@ -113,7 +113,7 @@ public class WardrobeBlock extends Block implements EntityBlock {
             boolean shouldTransfer = switch (mode) {
                 case RIGHT_CLICK -> !player.isShiftKeyDown();
                 case SHIFT_CLICK -> player.isShiftKeyDown();
-                case NONE -> false;
+                default -> false;
             };
             if (shouldTransfer) {
                 wardrobe.transferItems((ServerPlayer) player, null);

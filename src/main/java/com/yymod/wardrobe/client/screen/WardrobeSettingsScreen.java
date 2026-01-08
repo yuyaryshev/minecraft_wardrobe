@@ -81,7 +81,9 @@ public class WardrobeSettingsScreen extends Screen {
         fastTransferMode = switch (fastTransferMode) {
             case NONE -> WardrobeFastTransferMode.RIGHT_CLICK;
             case RIGHT_CLICK -> WardrobeFastTransferMode.SHIFT_CLICK;
-            case SHIFT_CLICK -> WardrobeFastTransferMode.NONE;
+            case SHIFT_CLICK -> WardrobeFastTransferMode.LEFT_CLICK;
+            case LEFT_CLICK -> WardrobeFastTransferMode.SHIFT_LEFT_CLICK;
+            case SHIFT_LEFT_CLICK -> WardrobeFastTransferMode.NONE;
         };
         fastTransferButton.setMessage(Component.literal(getFastTransferLabel(fastTransferMode)));
         WardrobeNetwork.sendToServer(new WardrobeActionPacket(menu.getBlockEntity().getBlockPos(),
@@ -111,6 +113,8 @@ public class WardrobeSettingsScreen extends Screen {
             case NONE -> "Fast transfer: None";
             case RIGHT_CLICK -> "Fast transfer: Right click";
             case SHIFT_CLICK -> "Fast transfer: Shift-click";
+            case LEFT_CLICK -> "Fast transfer: Left click";
+            case SHIFT_LEFT_CLICK -> "Fast transfer: Shift-left";
         };
     }
 
