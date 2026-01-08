@@ -106,7 +106,7 @@ public class WardrobeTransfer {
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
             if (!current.isEmpty() && !matchesConfig(current, config)) {
-                if (!tryBufferUnload(wardrobe, equipmentHandlers, buffered, equipmentBuffered, current)) {
+                if (!tryBufferUnload(wardrobe, equipmentHandlers, inputHandlers, outputHandler, buffered, equipmentBuffered, current)) {
                     continue;
                 }
                 setPlayerSlot(player.getInventory(), slotIndex, ItemStack.EMPTY);
@@ -119,7 +119,7 @@ public class WardrobeTransfer {
                     int excess = current.getCount() - maxAllowed;
                     ItemStack excessStack = current.copy();
                     excessStack.setCount(excess);
-                    if (tryBufferUnload(wardrobe, equipmentHandlers, buffered, equipmentBuffered, excessStack)) {
+                    if (tryBufferUnload(wardrobe, equipmentHandlers, inputHandlers, outputHandler, buffered, equipmentBuffered, excessStack)) {
                         current.shrink(excess);
                         setPlayerSlot(player.getInventory(), slotIndex, current);
                     }
@@ -160,12 +160,20 @@ public class WardrobeTransfer {
                 if (bufferedStack.isEmpty()) {
                     continue;
                 }
+                if (!canUnloadToInputsOutput(bufferedStack, inputHandlers, outputHandler)) {
+                    outputFull = true;
+                    wardrobe.setLastError("Output chest is full!");
+                    safeReturnToPlayer(player, bufferedStack);
+                    continue;
+                }
                 ItemStack remaining = unloadToPartialInputs(bufferedStack, inputHandlers);
                 if (!remaining.isEmpty() && outputHandler != null) {
                     remaining = ItemHandlerHelper.insertItemStacked(outputHandler, remaining, false);
                 }
                 if (!remaining.isEmpty()) {
                     outputFull = true;
+                    wardrobe.setLastError("Output chest is full!");
+                    safeReturnToPlayer(player, remaining);
                 }
             }
         }
@@ -174,9 +182,17 @@ public class WardrobeTransfer {
             if (bufferedStack.isEmpty()) {
                 continue;
             }
-            ItemStack remaining = unloadToEquipment(wardrobe, equipmentHandlers, bufferedStack, wardrobe.getActiveSetupIndex());
+            ItemStack remaining = simulateUnloadToEquipment(wardrobe, equipmentHandlers, bufferedStack.copy(),
+                    wardrobe.getActiveSetupIndex());
             if (!remaining.isEmpty()) {
                 wardrobe.setLastError("Not enough equipment space!");
+                safeReturnToPlayer(player, bufferedStack);
+                continue;
+            }
+            remaining = unloadToEquipment(wardrobe, equipmentHandlers, bufferedStack, wardrobe.getActiveSetupIndex());
+            if (!remaining.isEmpty()) {
+                wardrobe.setLastError("Not enough equipment space!");
+                safeReturnToPlayer(player, remaining);
             }
         }
 
@@ -341,15 +357,6 @@ public class WardrobeTransfer {
         player.sendSystemMessage(Component.literal(message).withStyle(ChatFormatting.RED));
     }
 
-    private static ItemStack unloadStack(WardrobeBlockEntity wardrobe, WardrobeSlotConfig config, ItemStack stack,
-                                         List<IItemHandler> inputHandlers, @Nullable IItemHandler outputHandler) {
-        ItemStack remaining = unloadToPartialInputs(stack.copy(), inputHandlers);
-        if (!remaining.isEmpty() && outputHandler != null) {
-            remaining = ItemHandlerHelper.insertItemStacked(outputHandler, remaining, false);
-        }
-        return remaining;
-    }
-
     private static ItemStack unloadToPartialInputs(ItemStack stack, List<IItemHandler> inputHandlers) {
         ItemStack remaining = stack;
         int maxStack = stack.getMaxStackSize();
@@ -363,6 +370,27 @@ public class WardrobeTransfer {
                     continue;
                 }
                 remaining = handler.insertItem(slot, remaining, false);
+                if (remaining.isEmpty()) {
+                    return ItemStack.EMPTY;
+                }
+            }
+        }
+        return remaining;
+    }
+
+    private static ItemStack simulateUnloadToPartialInputs(ItemStack stack, List<IItemHandler> inputHandlers) {
+        ItemStack remaining = stack;
+        int maxStack = stack.getMaxStackSize();
+        for (IItemHandler handler : inputHandlers) {
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack existing = handler.getStackInSlot(slot);
+                if (existing.isEmpty() || !ItemStack.isSameItemSameTags(existing, remaining)) {
+                    continue;
+                }
+                if (existing.getCount() >= maxStack) {
+                    continue;
+                }
+                remaining = handler.insertItem(slot, remaining, true);
                 if (remaining.isEmpty()) {
                     return ItemStack.EMPTY;
                 }
@@ -671,6 +699,7 @@ public class WardrobeTransfer {
     }
 
     private static boolean tryBufferUnload(WardrobeBlockEntity wardrobe, EquipmentHandlers equipmentHandlers,
+                                           List<IItemHandler> inputHandlers, @Nullable IItemHandler outputHandler,
                                            Map<ItemKey, ItemStack> buffered, List<ItemStack> equipmentBuffered,
                                            ItemStack stack) {
         if (stack.isEmpty()) {
@@ -678,6 +707,10 @@ public class WardrobeTransfer {
         }
         int setupIndex = findEquipmentSetupIndex(wardrobe, stack);
         if (setupIndex < 0) {
+            if (!canUnloadToInputsOutput(stack, inputHandlers, outputHandler)) {
+                wardrobe.setLastError("Output chest is full!");
+                return false;
+            }
             addToBuffer(buffered, stack);
             return true;
         }
@@ -688,6 +721,31 @@ public class WardrobeTransfer {
         }
         equipmentBuffered.add(stack.copy());
         return true;
+    }
+
+    private static boolean canUnloadToInputsOutput(ItemStack stack, List<IItemHandler> inputHandlers,
+                                                   @Nullable IItemHandler outputHandler) {
+        if (stack.isEmpty()) {
+            return true;
+        }
+        ItemStack remaining = simulateUnloadToPartialInputs(stack.copy(), inputHandlers);
+        if (!remaining.isEmpty()) {
+            if (outputHandler == null) {
+                return false;
+            }
+            remaining = ItemHandlerHelper.insertItemStacked(outputHandler, remaining, true);
+        }
+        return remaining.isEmpty();
+    }
+
+    private static void safeReturnToPlayer(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        boolean added = player.getInventory().add(stack);
+        if (!added && !stack.isEmpty()) {
+            player.drop(stack, false);
+        }
     }
 
     private static ItemStack loadFromBufferOrInputs(WardrobeSlotConfig config, List<IItemHandler> inputHandlers,
@@ -1253,6 +1311,10 @@ public class WardrobeTransfer {
             return remaining.isEmpty();
         }
         if (outputHandler == null) {
+            return false;
+        }
+        ItemStack simulated = ItemHandlerHelper.insertItemStacked(outputHandler, stack.copy(), true);
+        if (!simulated.isEmpty()) {
             return false;
         }
         ItemStack remaining = ItemHandlerHelper.insertItemStacked(outputHandler, stack, false);
