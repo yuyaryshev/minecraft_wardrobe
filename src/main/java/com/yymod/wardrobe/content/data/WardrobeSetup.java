@@ -19,6 +19,7 @@ public class WardrobeSetup {
         for (int i = 0; i < slots.length; i++) {
             slots[i] = new WardrobeSlotConfig();
         }
+        enforceEquipmentDefaults();
     }
 
     public String getName() {
@@ -85,6 +86,20 @@ public class WardrobeSetup {
                 slots[i].load(slotList.getCompound(i));
             } else {
                 slots[i].clear();
+            }
+        }
+        enforceEquipmentDefaults();
+    }
+
+    public void enforceEquipmentDefaults() {
+        for (int i = 36; i < slots.length; i++) {
+            WardrobeSlotConfig config = slots[i];
+            if (config.getBoundItem().isStackable() && !config.getBoundItem().isEmpty()) {
+                continue;
+            }
+            config.setEquipmentSlot(true);
+            if (config.getMode() == WardrobeSlotMode.NONE) {
+                config.setMode(WardrobeSlotMode.BOTH);
             }
         }
     }

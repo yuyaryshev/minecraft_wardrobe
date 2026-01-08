@@ -100,6 +100,9 @@ public class WardrobeTransfer {
             if (!config.isBound()) {
                 continue;
             }
+            if (shouldSkipEmptyEquipment(config)) {
+                continue;
+            }
 
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
             if (!current.isEmpty() && !matchesConfig(current, config)) {
@@ -194,6 +197,9 @@ public class WardrobeTransfer {
             if (!config.isBound()) {
                 continue;
             }
+            if (shouldSkipEmptyEquipment(config)) {
+                continue;
+            }
             ItemStack current = getPlayerSlot(player.getInventory(), slotIndex);
             if (current.isEmpty()) {
                 continue;
@@ -244,6 +250,9 @@ public class WardrobeTransfer {
         for (int slotIndex = 0; slotIndex < WardrobeSlotConfig.SLOT_COUNT; slotIndex++) {
             WardrobeSlotConfig config = setup.getSlot(slotIndex);
             if (!config.isBound()) {
+                continue;
+            }
+            if (shouldSkipEmptyEquipment(config)) {
                 continue;
             }
             WardrobeSlotMode mode = config.getEffectiveMode();
@@ -375,6 +384,39 @@ public class WardrobeTransfer {
         }
     }
 
+    private static ItemStack takeFromBufferByItemId(WardrobeSlotConfig config, Map<ItemKey, ItemStack> buffered, int missing) {
+        ItemStack bound = config.getBoundItem();
+        if (missing <= 0 || bound.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemKey bestKey = null;
+        ItemStack bestStack = ItemStack.EMPTY;
+        int bestScore = -1;
+        for (Map.Entry<ItemKey, ItemStack> entry : buffered.entrySet()) {
+            ItemStack stack = entry.getValue();
+            if (stack.isEmpty() || !isSameItemId(stack, bound)) {
+                continue;
+            }
+            int score = scoreNbtMatch(bound, stack);
+            if (score > bestScore) {
+                bestScore = score;
+                bestKey = entry.getKey();
+                bestStack = stack;
+            }
+        }
+        if (bestKey == null || bestStack.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        int toTake = Math.min(missing, bestStack.getCount());
+        ItemStack taken = bestStack.copy();
+        taken.setCount(toTake);
+        bestStack.shrink(toTake);
+        if (bestStack.isEmpty()) {
+            buffered.remove(bestKey);
+        }
+        return taken;
+    }
+
     private static ItemStack pullFromInputs(ItemStack template, int amount, List<IItemHandler> inputHandlers) {
         if (amount <= 0) {
             return ItemStack.EMPTY;
@@ -407,6 +449,30 @@ public class WardrobeTransfer {
         return collected;
     }
 
+    private static boolean isSameItemId(ItemStack a, ItemStack b) {
+        return !a.isEmpty() && !b.isEmpty() && a.getItem() == b.getItem();
+    }
+
+    private static int scoreNbtMatch(ItemStack expected, ItemStack candidate) {
+        return countMatchingNbtFields(expected.getTag(), candidate.getTag());
+    }
+
+    private static int countMatchingNbtFields(CompoundTag expected, CompoundTag candidate) {
+        if (expected == null || candidate == null) {
+            return 0;
+        }
+        int score = 0;
+        for (String key : expected.getAllKeys()) {
+            if (!candidate.contains(key)) {
+                continue;
+            }
+            if (expected.get(key).equals(candidate.get(key))) {
+                score++;
+            }
+        }
+        return score;
+    }
+
     private static int normalizeMax(WardrobeSlotConfig config, ItemStack current) {
         int max = Math.max(config.getMaxCount(), config.getMinCount());
         if (!current.isStackable()) {
@@ -422,6 +488,10 @@ public class WardrobeTransfer {
             min = Math.min(min, 1);
         }
         return Math.max(0, min);
+    }
+
+    private static boolean shouldSkipEmptyEquipment(WardrobeSlotConfig config) {
+        return config.isEquipmentSlot() && config.getBoundItem().isEmpty() && !config.isAirBound();
     }
 
     private static ItemStack getPlayerSlot(Inventory inventory, int index) {
@@ -519,6 +589,9 @@ public class WardrobeTransfer {
 
     private static int countAvailableForConfig(WardrobeSlotConfig config, List<IItemHandler> handlers) {
         ItemStack bound = config.getBoundItem();
+        if (config.isEquipmentSlot()) {
+            return countByItemId(bound, handlers);
+        }
         int exact = countExact(bound, handlers);
         if (config.getMatchMode() == WardrobeMatchMode.NORMAL) {
             return exact;
@@ -540,6 +613,22 @@ public class WardrobeTransfer {
             for (int slot = 0; slot < handler.getSlots(); slot++) {
                 ItemStack existing = handler.getStackInSlot(slot);
                 if (!existing.isEmpty() && ItemStack.isSameItemSameTags(existing, stack)) {
+                    count += existing.getCount();
+                }
+            }
+        }
+        return count;
+    }
+
+    private static int countByItemId(ItemStack stack, List<IItemHandler> handlers) {
+        if (stack.isEmpty()) {
+            return 0;
+        }
+        int count = 0;
+        for (IItemHandler handler : handlers) {
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack existing = handler.getStackInSlot(slot);
+                if (!existing.isEmpty() && isSameItemId(existing, stack)) {
                     count += existing.getCount();
                 }
             }
@@ -606,20 +695,27 @@ public class WardrobeTransfer {
         ItemStack inserted = ItemStack.EMPTY;
         ItemStack bound = config.getBoundItem();
 
-        ItemStack bufferedStack = buffered.get(ItemKey.fromStack(bound));
-        if (bufferedStack != null && !bufferedStack.isEmpty()) {
-            int toTake = Math.min(missing, bufferedStack.getCount());
-            inserted = bound.copy();
-            inserted.setCount(toTake);
-            bufferedStack.shrink(toTake);
-            if (bufferedStack.isEmpty()) {
-                buffered.remove(ItemKey.fromStack(bound));
+        if (config.isEquipmentSlot()) {
+            inserted = takeFromBufferByItemId(config, buffered, missing);
+            missing -= inserted.getCount();
+        } else {
+            ItemStack bufferedStack = buffered.get(ItemKey.fromStack(bound));
+            if (bufferedStack != null && !bufferedStack.isEmpty()) {
+                int toTake = Math.min(missing, bufferedStack.getCount());
+                inserted = bound.copy();
+                inserted.setCount(toTake);
+                bufferedStack.shrink(toTake);
+                if (bufferedStack.isEmpty()) {
+                    buffered.remove(ItemKey.fromStack(bound));
+                }
+                missing -= toTake;
             }
-            missing -= toTake;
         }
 
         if (missing > 0) {
-            ItemStack exact = pullFromInputs(bound, missing, inputHandlers);
+            ItemStack exact = config.isEquipmentSlot()
+                    ? pullFromInputsByItemId(config, missing, inputHandlers)
+                    : pullFromInputs(bound, missing, inputHandlers);
             if (!exact.isEmpty()) {
                 if (inserted.isEmpty()) {
                     inserted = exact.copy();
@@ -630,7 +726,7 @@ public class WardrobeTransfer {
             }
         }
 
-        if (missing > 0) {
+        if (missing > 0 && !config.isEquipmentSlot()) {
             ItemStack alt = pullAltFromInputs(config, missing, inputHandlers);
             if (!alt.isEmpty() && inserted.isEmpty()) {
                 inserted = alt.copy();
@@ -642,9 +738,14 @@ public class WardrobeTransfer {
 
     private static ItemStack loadFromInputsOnly(WardrobeSlotConfig config, List<IItemHandler> inputHandlers, int missing) {
         ItemStack bound = config.getBoundItem();
-        ItemStack exact = pullFromInputs(bound, missing, inputHandlers);
+        ItemStack exact = config.isEquipmentSlot()
+                ? pullFromInputsByItemId(config, missing, inputHandlers)
+                : pullFromInputs(bound, missing, inputHandlers);
         if (!exact.isEmpty()) {
             return exact;
+        }
+        if (config.isEquipmentSlot()) {
+            return ItemStack.EMPTY;
         }
         return pullAltFromInputs(config, missing, inputHandlers);
     }
@@ -702,7 +803,25 @@ public class WardrobeTransfer {
         if (missing <= 0) {
             return ItemStack.EMPTY;
         }
-        if (ItemStack.isSameItemSameTags(current, config.getBoundItem())) {
+        if (ItemStack.isSameItemSameTags(current, config.getBoundItem())
+                || (config.isEquipmentSlot() && isSameItemId(current, config.getBoundItem()))) {
+            if (config.isEquipmentSlot()) {
+                ItemStack taken = takeFromBufferByItemId(config, buffered, missing);
+                missing -= taken.getCount();
+                if (missing <= 0) {
+                    return taken;
+                }
+                ItemStack exact = pullFromInputsByItemId(config, missing, inputHandlers);
+                if (!exact.isEmpty()) {
+                    if (taken.isEmpty()) {
+                        return exact;
+                    }
+                    taken.grow(exact.getCount());
+                    return taken;
+                }
+                return taken;
+            }
+
             ItemStack bufferedStack = buffered.get(ItemKey.fromStack(current));
             if (bufferedStack != null && !bufferedStack.isEmpty()) {
                 int toTake = Math.min(missing, bufferedStack.getCount());
@@ -741,6 +860,36 @@ public class WardrobeTransfer {
             return pullFromInputsByType(config, amount, handlers);
         }
         return ItemStack.EMPTY;
+    }
+
+    private static ItemStack pullFromInputsByItemId(WardrobeSlotConfig config, int amount, List<IItemHandler> handlers) {
+        ItemStack bound = config.getBoundItem();
+        if (amount <= 0 || bound.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        int bestHandler = -1;
+        int bestSlot = -1;
+        int bestScore = -1;
+        for (int h = 0; h < handlers.size(); h++) {
+            IItemHandler handler = handlers.get(h);
+            for (int slot = 0; slot < handler.getSlots(); slot++) {
+                ItemStack slotStack = handler.getStackInSlot(slot);
+                if (slotStack.isEmpty() || !isSameItemId(slotStack, bound)) {
+                    continue;
+                }
+                int score = scoreNbtMatch(bound, slotStack);
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestHandler = h;
+                    bestSlot = slot;
+                }
+            }
+        }
+        if (bestHandler < 0) {
+            return ItemStack.EMPTY;
+        }
+        IItemHandler handler = handlers.get(bestHandler);
+        return handler.extractItem(bestSlot, Math.min(amount, 1), false);
     }
 
     private static ItemStack pullFromInputsByTag(WardrobeSlotConfig config, int amount, List<IItemHandler> handlers) {
@@ -798,6 +947,9 @@ public class WardrobeTransfer {
 
     private static boolean matchesConfig(ItemStack stack, WardrobeSlotConfig config) {
         if (ItemStack.isSameItemSameTags(stack, config.getBoundItem())) {
+            return true;
+        }
+        if (config.isEquipmentSlot() && isSameItemId(stack, config.getBoundItem())) {
             return true;
         }
         if (config.getMatchMode() == WardrobeMatchMode.TAG) {
@@ -890,7 +1042,7 @@ public class WardrobeTransfer {
                 if (config.getBoundItem().isStackable()) {
                     continue;
                 }
-                if (!matchesConfig(stack, config)) {
+                if (!isSameItemId(stack, config.getBoundItem())) {
                     continue;
                 }
                 if (config.isEquipmentSlot() || isEquipmentSlotIndex(slotIndex)) {

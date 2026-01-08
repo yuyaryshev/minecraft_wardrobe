@@ -87,6 +87,7 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 repositories {
     maven { url = "https://maven.minecraftforge.net" }
     mavenCentral()
+    maven { url = "https://maven.blamejared.com" }
     maven { url = "https://maven.theillusivec4.top" }
     maven { url = "https://api.modrinth.com/maven" }
     maven { url = uri("D:/b/Mine/GIT_Work/minecraft/mods_2025-12-23/minecraft_mcp_for_llm/mcmodsrepo") }
@@ -97,6 +98,8 @@ dependencies {
     implementation fg.deobf("com.yymod.mcpforllm:minecraft_mcp_for_llm:0.1.0-1.20.1")
     implementation fg.deobf("top.theillusivec4.curios:curios-forge:5.14.1+1.20.1")
     runtimeOnly fg.deobf("maven.modrinth:curious-armor-stands:1.20-5.1.0")
+    runtimeOnly fg.deobf("vazkii.botania:Botania:1.20.1-450-FORGE")
+    runtimeOnly fg.deobf("vazkii.patchouli:Patchouli:1.20.1-84.1-FORGE")
 }
 
 jar {

@@ -115,6 +115,7 @@ public final class WardrobeSetupJson {
                 config.clear();
             }
         }
+        setup.enforceEquipmentDefaults();
     }
 
     private static String stackToString(ItemStack stack) {

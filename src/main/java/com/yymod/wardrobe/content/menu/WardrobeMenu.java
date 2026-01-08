@@ -320,9 +320,11 @@ public class WardrobeMenu extends AbstractContainerMenu {
         if (button == 1) {
             if (config.isBound() && !config.isAirBound()) {
                 config.clear();
+                enforceEquipmentDefaults(wardrobeSlotIndex, config);
                 blockEntity.markUpdated();
             } else if (!config.isBound()) {
                 config.setAirBound();
+                enforceEquipmentDefaults(wardrobeSlotIndex, config);
                 blockEntity.markUpdated();
             }
             return;
@@ -330,11 +332,13 @@ public class WardrobeMenu extends AbstractContainerMenu {
 
         if (config.isAirBound()) {
             config.clear();
+            enforceEquipmentDefaults(wardrobeSlotIndex, config);
             blockEntity.markUpdated();
             return;
         }
 
-        boolean wasUnbound = !config.isBound();
+        boolean wasUnbound = !config.isBound()
+                || (config.getBoundItem().isEmpty() && config.isEquipmentSlot());
         ItemStack carried = getCarried();
         if (!carried.isEmpty()) {
             ItemStack binding = carried.copy();
@@ -353,6 +357,7 @@ public class WardrobeMenu extends AbstractContainerMenu {
                 config.setMatchMode(WardrobeMatchMode.EQUIPMENT);
             }
         }
+        enforceEquipmentDefaults(wardrobeSlotIndex, config);
         blockEntity.markUpdated();
     }
 
@@ -427,6 +432,20 @@ public class WardrobeMenu extends AbstractContainerMenu {
 
     private int toWardrobeSlotIndex(int slotId) {
         return slotIdToWardrobeIndex.getOrDefault(slotId, -1);
+    }
+
+    private void enforceEquipmentDefaults(int slotIndex, WardrobeSlotConfig config) {
+        if (slotIndex < 36) {
+            return;
+        }
+        if (!config.getBoundItem().isEmpty() && config.getBoundItem().isStackable()) {
+            config.setEquipmentSlot(false);
+            return;
+        }
+        config.setEquipmentSlot(true);
+        if (config.getMode() == WardrobeSlotMode.NONE) {
+            config.setMode(WardrobeSlotMode.BOTH);
+        }
     }
 
     @Override

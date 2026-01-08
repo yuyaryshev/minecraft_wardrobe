@@ -84,7 +84,6 @@ public class WardrobeNetwork {
                 }
                 case UNLOAD_ALL -> {
                     wardrobe.unloadAll(serverPlayer);
-                    wardrobe.transferItems(serverPlayer, null);
                 }
             }
         });

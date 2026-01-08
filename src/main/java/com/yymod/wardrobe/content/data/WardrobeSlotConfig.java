@@ -70,7 +70,7 @@ public class WardrobeSlotConfig {
 
     public void setMatchMode(WardrobeMatchMode matchMode) {
         this.matchMode = matchMode == null ? WardrobeMatchMode.NORMAL : matchMode;
-        if (this.matchMode == WardrobeMatchMode.EQUIPMENT && boundItem.isStackable()) {
+        if (this.matchMode == WardrobeMatchMode.EQUIPMENT && !boundItem.isEmpty() && boundItem.isStackable()) {
             this.matchMode = WardrobeMatchMode.NORMAL;
             equipmentSlot = false;
             return;
@@ -91,14 +91,14 @@ public class WardrobeSlotConfig {
     }
 
     public boolean isEquipmentSlot() {
-        if (boundItem.isStackable()) {
+        if (!boundItem.isEmpty() && boundItem.isStackable()) {
             return false;
         }
         return equipmentSlot || matchMode == WardrobeMatchMode.EQUIPMENT;
     }
 
     public void setEquipmentSlot(boolean equipmentSlot) {
-        if (boundItem.isStackable()) {
+        if (!boundItem.isEmpty() && boundItem.isStackable()) {
             this.equipmentSlot = false;
             if (matchMode == WardrobeMatchMode.EQUIPMENT) {
                 matchMode = WardrobeMatchMode.NORMAL;
@@ -128,7 +128,7 @@ public class WardrobeSlotConfig {
     }
 
     public boolean isBound() {
-        return !boundItem.isEmpty() || isAirBound();
+        return !boundItem.isEmpty() || isAirBound() || isEquipmentSlot();
     }
 
     public boolean isAirBound() {
